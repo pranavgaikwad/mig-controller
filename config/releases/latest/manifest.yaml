@@ -350,7 +350,7 @@ spec:
               fieldPath: metadata.namespace
         - name: SECRET_NAME
           value: webhook-server-secret
-        image: quay.io/ocpmigrate/mig-controller:latest
+        image: quay.io/ocpmigrate/mig-controller:sprint6
         imagePullPolicy: Always
         name: manager
         ports:

@@ -4,12 +4,12 @@ echo
 echo "================"
 echo "Deploying Velero"
 echo "================"
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/10-velero-crds.yaml
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/20-velero-deployment.yaml
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/30-restic-daemonset.yaml
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/40-mig-namespace.yaml
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/50-mig-sa.yaml
-oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/master/hack/deploy/manifests/60-cloud-credentials.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/10-velero-crds.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/20-velero-deployment.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/30-restic-daemonset.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/40-mig-namespace.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/50-mig-sa.yaml
+oc apply -f https://raw.githubusercontent.com/fusor/mig-controller/sprint6/hack/deploy/manifests/60-cloud-credentials.yaml
 
 echo
 echo "===================================================="
