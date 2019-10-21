@@ -18,9 +18,10 @@ package v1alpha1
 
 import (
 	"context"
+	"time"
+
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	"time"
 
 	velero "github.com/heptio/velero/pkg/apis/velero/v1"
 	ocapi "github.com/openshift/api/apps/v1"
@@ -46,6 +47,8 @@ type MigClusterSpec struct {
 	ServiceAccountSecretRef *kapi.ObjectReference `json:"serviceAccountSecretRef,omitempty"`
 	CABundle                []byte                `json:"caBundle,omitempty"`
 	StorageClasses          []StorageClass        `json:"storageClasses,omitempty"`
+	// NOTE : add a list of namespaces to migcluster
+	Namespaces kapi.NamespaceList `json:"namespaces,omitempty"`
 }
 
 // MigClusterStatus defines the observed state of MigCluster

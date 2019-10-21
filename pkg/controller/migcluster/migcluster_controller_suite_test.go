@@ -73,3 +73,7 @@ func StartTestManager(mgr manager.Manager, g *gomega.GomegaWithT) (chan struct{}
 	}()
 	return stop, wg
 }
+
+func TestFetchNamespaces(m *testing.T) {
+
+}

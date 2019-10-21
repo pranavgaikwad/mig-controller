@@ -18,6 +18,7 @@ package migcluster
 
 import (
 	"context"
+
 	migapi "github.com/fusor/mig-controller/pkg/apis/migration/v1alpha1"
 	"github.com/fusor/mig-controller/pkg/logging"
 	migref "github.com/fusor/mig-controller/pkg/reference"
@@ -99,6 +100,25 @@ type ReconcileMigCluster struct {
 	Controller controller.Controller
 }
 
+func (r *ReconcileMigCluster) fetchNamespaces(cluster *migapi.MigCluster) error {
+	client, err := cluster.GetClient(r.Client)
+	if err != nil {
+		return err
+	}
+	namespaceList := kapi.NamespaceList{}
+	err = client.List(context.TODO(), nil, &namespaceList)
+	if err != nil {
+		return err
+	}
+	// NOTE: we can create a checksum of namespaceList to prevent frequent updates.
+	// only update when checksum doesn't match.
+	// how to prevent the whole list namespaces call?
+	// total_updates = max(1, checksum_miss+1)
+	cluster.Spec.Namespaces = namespaceList
+	err = r.Update(context.TODO(), cluster)
+	return err
+}
+
 // Reconcile reads that state of the cluster for a MigCluster object and makes changes based on the state read
 // and what is in the MigCluster.Spec
 // +kubebuilder:rbac:groups=migration.openshift.io,resources=migclusters,verbs=get;list;watch;create;update;patch;delete
@@ -114,6 +134,15 @@ func (r *ReconcileMigCluster) Reconcile(request reconcile.Request) (reconcile.Re
 		if errors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
+		log.Trace(err)
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	// REVIEW : fetch list of all namespaces in the cluster
+	// should it be here or in migplan reconcile?
+	err = r.fetchNamespaces(cluster)
+
+	if err != nil {
 		log.Trace(err)
 		return reconcile.Result{Requeue: true}, nil
 	}
