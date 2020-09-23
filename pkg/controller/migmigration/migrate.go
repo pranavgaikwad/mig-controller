@@ -92,6 +92,21 @@ func (r *ReconcileMigMigration) migrate(migration *migapi.MigMigration) (time.Du
 		return NoReQ, nil
 	}
 
+	if task.Phase == StageBackupCreated {
+		podVolumeBackup, err := task.getPodVolumeBackup()
+		if err != nil {
+			//log.Trace(err)
+			log.Info("error")
+			log.Info(fmt.Sprintf("[PodVolumeBackup] " + podVolumeBackup.Name))
+		}
+		if podVolumeBackup == nil {
+			log.Info("No name")
+		} else {
+			log.Info("[PodVolumeBackup] " + podVolumeBackup.Name)
+		}
+
+	}
+
 	// Running
 	step, n, total := task.Itinerary.progressReport(task.Phase)
 	message := fmt.Sprintf(RunningMessage, n, total)
