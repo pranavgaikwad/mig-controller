@@ -101,6 +101,7 @@ func (r *ReconcileMigMigration) migrate(migration *migapi.MigMigration) (time.Du
 		Reason:   step,
 		Category: Advisory,
 		Message:  message,
+		Progress: task.Progress,
 	})
 
 	return task.Requeue, nil
