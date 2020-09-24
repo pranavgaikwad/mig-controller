@@ -166,20 +166,19 @@ func (t Task) getBackup(labels map[string]string) (*velero.Backup, error) {
 }
 
 // Update Task.Progress with latest available progress information
-func (t *Task) updateBackupProgress(backup *velero.Backup) {
+func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVolumeBackupList) {
 	progress := []string{}
 	if backup.Status.Progress != nil {
-		backupProgress := fmt.Sprintf(
-			BackupProgressMessage,
-			backup.Name,
-			backup.Status.Progress.ItemsBackedUp,
-			backup.Status.Progress.TotalItems,
-		)
-		progress = append(progress, backupProgress)
+		progress = append(
+			progress,
+			fmt.Sprintf(
+				BackupProgressMessage,
+				backup.Name,
+				backup.Status.Progress.ItemsBackedUp,
+				backup.Status.Progress.TotalItems))
 	}
-	pvbs := t.getPodVolumeBackupsForBackup(backup)
-	if pvbs != nil {
-		for _, pvb := range pvbs.Items {
+	if pvbList != nil {
+		for _, pvb := range pvbList.Items {
 			// gather progress here
 		}
 	}
@@ -236,6 +235,8 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 		return
 	}
 
+	pvbs := t.getPodVolumeBackupsForBackup(backup)
+
 	switch backup.Status.Phase {
 	case velero.BackupPhaseNew:
 		progress = append(
@@ -275,6 +276,8 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 				"Backup: %s/%s failed.",
 				backup.Namespace,
 				backup.Name))
+		pvbReasons := t.getPodVolumeBackupReasons(pvbs)
+		reasons = append(reasons, pvbReasons...)
 	case velero.BackupPhasePartiallyFailed:
 		completed = true
 		reasons = append(
@@ -299,6 +302,25 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 
 	t.Progress = progress
 	return completed, reasons
+}
+
+// returns reasons of failed PVBs
+func (t *Task) getPodVolumeBackupReasons(pvbList *velero.PodVolumeBackupList) []string {
+	reasons := []string{}
+	if pvbList == nil {
+		return reasons
+	}
+	for _, pvb := range pvbList.Items {
+		if pvb.Status.Phase == velero.PodVolumeBackupPhaseFailed {
+			reasons = append(
+				reasons,
+				fmt.Sprintf(
+					"PodVolumeBackup: %s/%s failed",
+					pvb.Namespace,
+					pvb.Name))
+		}
+	}
+	return reasons
 }
 
 // Get the existing BackupStorageLocation on the source cluster.
