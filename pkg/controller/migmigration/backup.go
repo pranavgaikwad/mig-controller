@@ -125,12 +125,13 @@ func (t *Task) getStageBackup() (*velero.Backup, error) {
 
 func (t *Task) getPodVolumeBackupsForBackup(backup *velero.Backup) *velero.PodVolumeBackupList {
 	nl := map[string]string{
-		"velero.io/backup-name": backup.Name,
+		velero.BackupNameLabel: backup.Name,
 	}
 
 	client, err := t.getSourceClient()
 	if err != nil {
 		log.Trace(err)
+		return nil
 	}
 	list := velero.PodVolumeBackupList{}
 	err = client.List(
@@ -139,11 +140,9 @@ func (t *Task) getPodVolumeBackupsForBackup(backup *velero.Backup) *velero.PodVo
 		&list)
 	if err != nil {
 		log.Trace(err)
+		return nil
 	}
-	if len(list.Items) > 0 {
-		return &list
-	}
-	return nil
+	return &list
 }
 
 // Get an existing Backup on the source cluster.
@@ -167,8 +166,6 @@ func (t Task) getBackup(labels map[string]string) (*velero.Backup, error) {
 	return nil, nil
 }
 
-
-
 // Update Task.Progress with latest available progress information
 func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVolumeBackupList) {
 	progress := []string{}
@@ -183,12 +180,12 @@ func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVo
 	}
 	if pvbList != nil {
 		for _, pvb := range pvbList.Items {
-				progress = append(progress,
-					fmt.Sprintf(
-						PodVolumeBackupProgressMessage,
-						pvb.Name,
-						pvb.Status.Progress.BytesDone,
-						pvb.Status.Progress.TotalBytes))
+			progress = append(progress,
+				fmt.Sprintf(
+					PodVolumeBackupProgressMessage,
+					pvb.Name,
+					pvb.Status.Progress.BytesDone,
+					pvb.Status.Progress.TotalBytes))
 		}
 	}
 	t.Progress = progress
