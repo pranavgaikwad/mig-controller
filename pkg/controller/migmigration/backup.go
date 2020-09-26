@@ -18,12 +18,6 @@ import (
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Progress messages
-const (
-	BackupProgressMessage          = "[Backup %s] %d out of estimated total of %d objects backed up"
-	PodVolumeBackupProgressMessage = "[VolumeBackup %s] %d of %d bytes backed up"
-)
-
 // Ensure the initial backup on the source cluster has been created
 // and has the proper settings.
 func (t *Task) ensureInitialBackup() (*velero.Backup, error) {
@@ -201,7 +195,8 @@ func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVo
 		progress = append(
 			progress,
 			fmt.Sprintf(
-				BackupProgressMessage,
+				"Backup %s/%s: %d out of estimated total of %d objects backed up",
+				backup.Namespace,
 				backup.Name,
 				backup.Status.Progress.ItemsBackedUp,
 				backup.Status.Progress.TotalItems))
@@ -212,6 +207,24 @@ func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVo
 		}
 	}
 	t.Progress = progress
+}
+
+// returns reasons of failed PVBs
+func (t *Task) getPodVolumeBackupReasons(pvbList *velero.PodVolumeBackupList) (reasons []string) {
+	if pvbList == nil {
+		return
+	}
+	for _, pvb := range pvbList.Items {
+		if pvb.Status.Phase == velero.PodVolumeBackupPhaseFailed {
+			reasons = append(
+				reasons,
+				fmt.Sprintf(
+					"PodVolumeBackup: %s/%s failed",
+					pvb.Namespace,
+					pvb.Name))
+		}
+	}
+	return
 }
 
 // Get whether a backup has completed on the source cluster.
@@ -263,9 +276,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 		}
 		return
 	}
-
-	pvbs := t.getPodVolumeBackupsForBackup(backup)
-
 	switch backup.Status.Phase {
 	case velero.BackupPhaseNew:
 		progress = append(
@@ -331,25 +341,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 
 	t.Progress = progress
 	return completed, reasons
-}
-
-// returns reasons of failed PVBs
-func (t *Task) getPodVolumeBackupReasons(pvbList *velero.PodVolumeBackupList) []string {
-	reasons := []string{}
-	if pvbList == nil {
-		return reasons
-	}
-	for _, pvb := range pvbList.Items {
-		if pvb.Status.Phase == velero.PodVolumeBackupPhaseFailed {
-			reasons = append(
-				reasons,
-				fmt.Sprintf(
-					"PodVolumeBackup: %s/%s failed",
-					pvb.Namespace,
-					pvb.Name))
-		}
-	}
-	return reasons
 }
 
 // Get the existing BackupStorageLocation on the source cluster.
