@@ -146,14 +146,14 @@ func (t *Task) updateRestoreProgress(restore *velero.Restore, pvrList *velero.Po
 	}
 	// update podvolumerestore progress
 	if pvrList != nil {
-		for _, pvb := range pvrList.Items {
+		for _, pvr := range pvrList.Items {
 			progress = append(progress,
 				fmt.Sprintf(
-					"PodVolumeBackup %s/%s: %d of %d bytes restored",
-					pvb.Namespace,
-					pvb.Name,
-					pvb.Status.Progress.BytesDone,
-					pvb.Status.Progress.TotalBytes))
+					"PodVolumeRestore %s/%s: %d out of %d bytes restored",
+					pvr.Namespace,
+					pvr.Name,
+					pvr.Status.Progress.BytesDone,
+					pvr.Status.Progress.TotalBytes))
 		}
 	}
 	t.Progress = progress
