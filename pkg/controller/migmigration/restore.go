@@ -241,6 +241,8 @@ func (t *Task) hasRestoreCompleted(restore *velero.Restore) (bool, []string) {
 				"Restore: %s/%s failed.",
 				restore.Namespace,
 				restore.Name))
+		pvrReasons := t.getFailedPodVolumeRestoreReasons(pvrs)
+		reasons = append(reasons, pvrReasons...)
 	case velero.RestorePhasePartiallyFailed:
 		completed = true
 		reasons = append(

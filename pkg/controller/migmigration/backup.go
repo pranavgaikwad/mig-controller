@@ -159,29 +159,6 @@ func (t Task) getBackup(labels map[string]string) (*velero.Backup, error) {
 	return nil, nil
 }
 
-<<<<<<< HEAD
-=======
-// Update Task.Progress with latest available progress information
-func (t *Task) updateBackupProgress(backup *velero.Backup, pvbList *velero.PodVolumeBackupList) {
-	progress := []string{}
-	if backup.Status.Progress != nil {
-		progress = append(
-			progress,
-			fmt.Sprintf(
-				BackupProgressMessage,
-				backup.Name,
-				backup.Status.Progress.ItemsBackedUp,
-				backup.Status.Progress.TotalItems))
-	}
-	if pvbList != nil {
-		for _, pvb := range pvbList.Items {
-			// gather progress here
-		}
-	}
-	t.Progress = progress
-}
-
->>>>>>> da65abae... adding PVB reasons to failed backup tasks
 // Get whether a backup has completed on the source cluster.
 func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 	completed := false
@@ -235,7 +212,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 	pvbs := t.getPodVolumeBackupsForBackup(backup)
 
 	switch backup.Status.Phase {
-<<<<<<< HEAD
 	case velero.BackupPhaseNew:
 		progress = append(
 			progress,
@@ -266,13 +242,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 		progress = append(
 			progress,
 			getPodVolumeBackupsProgress(pvbs)...)
-=======
-	case velero.BackupPhaseInProgress:
-		t.updateBackupProgress(backup, pvbs)
-	case velero.BackupPhaseCompleted:
-		completed = true
-		t.updateBackupProgress(backup, pvbs)
->>>>>>> da65abae... adding PVB reasons to failed backup tasks
 	case velero.BackupPhaseFailed:
 		completed = true
 		reasons = append(
@@ -291,14 +260,9 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 				"Backup: %s/%s partially failed.",
 				backup.Namespace,
 				backup.Name))
-<<<<<<< HEAD
 		reasons = append(
 			reasons,
 			getPodVolumeBackupsProgress(pvbs)...)
-=======
-		pvbReasons := t.getPodVolumeBackupReasons(pvbs)
-		reasons = append(reasons, pvbReasons...)
->>>>>>> da65abae... adding PVB reasons to failed backup tasks
 	case velero.BackupPhaseFailedValidation:
 		reasons = backup.Status.ValidationErrors
 		reasons = append(
