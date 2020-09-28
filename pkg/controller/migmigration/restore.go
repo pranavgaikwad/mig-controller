@@ -3,7 +3,6 @@ package migmigration
 import (
 	"context"
 	"fmt"
-	"github.com/vmware-tanzu/velero/pkg/backup"
 	"strings"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -135,15 +134,13 @@ func (t Task) getRestore(labels map[string]string) (*velero.Restore, error) {
 func (t *Task) updateRestoreProgress(restore *velero.Restore, pvrList *velero.PodVolumeRestoreList) {
 	progress := []string{}
 	// update restore progress
-	if restore.Status.Phase != nil {
-		progress = append(
-			progress,
-			fmt.Sprintf(
-				"Restore %s/%s: is in phase: %s",
-				restore.Namespace,
-				restore.Name,
-				restore.Status.Phase))
-	}
+	progress = append(
+		progress,
+		fmt.Sprintf(
+			"Restore %s/%s: is in phase: %s",
+			restore.Namespace,
+			restore.Name,
+			restore.Status.Phase))
 	// update podvolumerestore progress
 	if pvrList != nil {
 		for _, pvr := range pvrList.Items {
