@@ -165,7 +165,7 @@ func (t *Task) getPodVolumeRestoresForRestore(restore *velero.Restore) *velero.P
 	nl := map[string]string{
 		velero.RestoreNameLabel: restore.Name,
 	}
-	client, err := t.getSourceClient()
+	client, err := t.getDestinationClient()
 	if err != nil {
 		log.Trace(err)
 		return nil
