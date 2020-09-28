@@ -3,6 +3,7 @@ package migmigration
 import (
 	"context"
 	"fmt"
+	"github.com/vmware-tanzu/velero/pkg/backup"
 	"strings"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -134,15 +135,49 @@ func (t Task) getRestore(labels map[string]string) (*velero.Restore, error) {
 func (t *Task) updateRestoreProgress(restore *velero.Restore, pvrList *velero.PodVolumeRestoreList) {
 	progress := []string{}
 	// update restore progress
-
+	if restore.Status.Phase != nil {
+		progress = append(
+			progress,
+			fmt.Sprintf(
+				"Restore %s/%s: is in phase: %s",
+				restore.Namespace,
+				restore.Name,
+				restore.Status.Phase))
+	}
 	// update podvolumerestore progress
+	if pvrList != nil {
+		for _, pvb := range pvrList.Items {
+			progress = append(progress,
+				fmt.Sprintf(
+					"PodVolumeBackup %s/%s: %d of %d bytes restored",
+					pvb.Namespace,
+					pvb.Name,
+					pvb.Status.Progress.BytesDone,
+					pvb.Status.Progress.TotalBytes))
+		}
+	}
 	t.Progress = progress
 }
 
 // Get PVRs associated with a Restore
 func (t *Task) getPodVolumeRestoresForRestore(restore *velero.Restore) *velero.PodVolumeRestoreList {
 	list := velero.PodVolumeRestoreList{}
-	// find pod volume restores associated with given restore
+	nl := map[string]string{
+		velero.RestoreNameLabel: restore.Name,
+	}
+	client, err := t.getSourceClient()
+	if err != nil {
+		log.Trace(err)
+		return nil
+	}
+	err = client.List(
+		context.TODO(),
+		k8sclient.MatchingLabels(nl),
+		&list)
+	if err != nil {
+		log.Trace(err)
+		return nil
+	}
 	return &list
 }
 
