@@ -456,6 +456,7 @@ func findPVVerify(pvList migapi.PersistentVolumes, pvName string) bool {
 	return false
 }
 
+<<<<<<< HEAD
 func bytesToSI(bytes int64) string {
 	const baseUnit = 1000
 	if bytes < baseUnit {
@@ -469,4 +470,19 @@ func bytesToSI(bytes int64) string {
 	}
 	return fmt.Sprintf("%.f %cB",
 		float64(bytes)/float64(div), siUnits[exp])
+=======
+func bytesToSI(b int64) string {
+	const unit = 1000
+	const siUnits = "kMGTPE"
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB",
+		float64(b)/float64(div), siUnits[exp])
+>>>>>>> 4bcef115... change bytes to nearest possible SI unit
 }
