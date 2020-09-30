@@ -424,6 +424,7 @@ func (t *Task) ensureDestinationStagePodsStarted() (report PodStartReport, err e
 }
 
 func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, err error) {
+	progress := []string{}
 	hasHealthyClaims := func(pod *corev1.Pod) (healthy bool) {
 		healthy = true
 		for _, vol := range pod.Spec.Volumes {
@@ -478,7 +479,7 @@ func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, e
 	if err != nil {
 		return
 	}
-
+	report.started = true
 	for _, pod := range podList.Items {
 		ready := true
 		for _, c := range pod.Status.ContainerStatuses {
@@ -487,14 +488,28 @@ func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, e
 			}
 		}
 		if !ready {
+			progress = append(
+				progress,
+				fmt.Sprintf(
+					"Stage Pod %s/%s: Not running. Phase %s",
+					pod.Namespace,
+					pod.Name,
+					pod.Status.Phase))
+			report.started = false
 			if !hasHealthyClaims(&pod) {
 				report.failed = true
 			}
-			return
+		} else {
+			progress = append(
+				progress,
+				fmt.Sprintf(
+					"Stage Pod %s/%s: Running",
+					pod.Namespace,
+					pod.Name))
+
 		}
 	}
-
-	report.started = true
+	t.Progress = progress
 	return
 }
 
@@ -525,12 +540,12 @@ func (t *Task) ensureStagePodsDeleted() error {
 				pod.Name)
 		}
 	}
-
 	return nil
 }
 
 // Ensure the deleted stage pods have finished terminating
 func (t *Task) ensureStagePodsTerminated() (bool, error) {
+	progress := []string{}
 	clients, err := t.getBothClients()
 	if err != nil {
 		return false, liberr.Wrap(err)
@@ -542,6 +557,7 @@ func (t *Task) ensureStagePodsTerminated() (bool, error) {
 		corev1.PodUnknown:   true,
 	}
 	options := k8sclient.MatchingLabels(t.Owner.GetCorrelationLabels())
+	terminated := true
 	for _, client := range clients {
 		podList := corev1.PodList{}
 		err := client.List(context.TODO(), options, &podList)
@@ -551,13 +567,25 @@ func (t *Task) ensureStagePodsTerminated() (bool, error) {
 		for _, pod := range podList.Items {
 			// looks like it's terminated
 			if terminatedPhases[pod.Status.Phase] {
+				progress = append(
+					progress,
+					fmt.Sprintf(
+						"Stage Pod %s/%s: Not terminated yet",
+						pod.Namespace,
+						pod.Name))
 				continue
 			}
-			return false, nil
+			progress = append(
+				progress,
+				fmt.Sprintf(
+					"Stage Pod %s/%s: Not terminated yet",
+					pod.Namespace,
+					pod.Name))
+			terminated = false
 		}
 	}
 	t.Owner.Status.DeleteCondition(StagePodsCreated)
-	return true, nil
+	return terminated, nil
 }
 
 func (t *Task) stagePodLabels() map[string]string {

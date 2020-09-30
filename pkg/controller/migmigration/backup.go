@@ -209,50 +209,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 		return
 	}
 
-	pvbs := t.getPodVolumeBackupsForBackup(backup)
-
-	getPodVolumeBackupsProgress := func(pvbList *velero.PodVolumeBackupList) (progress []string) {
-		if pvbList == nil {
-			return
-		}
-		for _, pvb := range pvbList.Items {
-			switch pvb.Status.Phase {
-			case velero.PodVolumeBackupPhaseInProgress:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeBackup %s/%s: %s out of %s backed up",
-						pvb.Namespace,
-						pvb.Name,
-						bytesToSI(pvb.Status.Progress.BytesDone),
-						bytesToSI(pvb.Status.Progress.TotalBytes)))
-			case velero.PodVolumeBackupPhaseCompleted:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeBackup %s/%s: Completed (%s backed up)",
-						pvb.Namespace,
-						pvb.Name,
-						bytesToSI(pvb.Status.Progress.TotalBytes)))
-			case velero.PodVolumeBackupPhaseFailed:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeBackup %s/%s: Failed",
-						pvb.Namespace,
-						pvb.Name))
-			default:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeBackup %s/%s: Waiting for ongoing volume backup to finish",
-						pvb.Namespace,
-						pvb.Name))
-			}
-		}
-		return
-	}
-
 	switch backup.Status.Phase {
 	case velero.BackupPhaseNew:
 		progress = append(
@@ -316,25 +272,6 @@ func (t *Task) hasBackupCompleted(backup *velero.Backup) (bool, []string) {
 
 	t.Progress = progress
 	return completed, reasons
-}
-
-// returns reasons of failed PVBs
-func (t *Task) getPodVolumeBackupReasons(pvbList *velero.PodVolumeBackupList) []string {
-	reasons := []string{}
-	if pvbList == nil {
-		return reasons
-	}
-	for _, pvb := range pvbList.Items {
-		if pvb.Status.Phase == velero.PodVolumeBackupPhaseFailed {
-			reasons = append(
-				reasons,
-				fmt.Sprintf(
-					"PodVolumeBackup: %s/%s failed",
-					pvb.Namespace,
-					pvb.Name))
-		}
-	}
-	return reasons
 }
 
 // Get the existing BackupStorageLocation on the source cluster.
@@ -519,7 +456,6 @@ func findPVVerify(pvList migapi.PersistentVolumes, pvName string) bool {
 	return false
 }
 
-<<<<<<< HEAD
 func bytesToSI(bytes int64) string {
 	const baseUnit = 1000
 	if bytes < baseUnit {
@@ -533,19 +469,4 @@ func bytesToSI(bytes int64) string {
 	}
 	return fmt.Sprintf("%.f %cB",
 		float64(bytes)/float64(div), siUnits[exp])
-=======
-func bytesToSI(b int64) string {
-	const unit = 1000
-	const siUnits = "kMGTPE"
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB",
-		float64(b)/float64(div), siUnits[exp])
->>>>>>> 4bcef115... change bytes to nearest possible SI unit
 }
