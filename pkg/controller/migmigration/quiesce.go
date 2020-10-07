@@ -21,30 +21,37 @@ func (t *Task) quiesceApplications() error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing cron jobs"})
 	err = t.quiesceCronJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing deployment configs"})
 	err = t.quiesceDeploymentConfigs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing deployments"})
 	err = t.quiesceDeployments(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing stateful sets"})
 	err = t.quiesceStatefulSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing replica sets"})
 	err = t.quiesceReplicaSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing daemon sets"})
 	err = t.quiesceDaemonSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Quesceing jobs"})
 	err = t.quiesceJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
@@ -59,30 +66,37 @@ func (t *Task) unQuiesceApplications() error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing cron jobs"})
 	err = t.unQuiesceCronJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing deployment configs"})
 	err = t.unQuiesceDeploymentConfigs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing deployments"})
 	err = t.unQuiesceDeployments(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing stateful sets"})
 	err = t.unQuiesceStatefulSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing replica sets"})
 	err = t.unQuiesceReplicaSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing daemon sets"})
 	err = t.unQuiesceDaemonSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+	t.setInProgressCondition([]string{"Un-quesceing jobs"})
 	err = t.unQuiesceJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
