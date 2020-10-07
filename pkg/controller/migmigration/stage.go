@@ -573,18 +573,21 @@ func (t *Task) ensureStagePodsTerminated() (bool, error) {
 						"Stage Pod %s/%s: Not terminated yet",
 						pod.Namespace,
 						pod.Name))
-				continue
+			} else {
+				progress = append(
+					progress,
+					fmt.Sprintf(
+						"Stage Pod %s/%s: Not terminated yet",
+						pod.Namespace,
+						pod.Name))
+				terminated = false
 			}
-			progress = append(
-				progress,
-				fmt.Sprintf(
-					"Stage Pod %s/%s: Not terminated yet",
-					pod.Namespace,
-					pod.Name))
-			terminated = false
 		}
 	}
-	t.Owner.Status.DeleteCondition(StagePodsCreated)
+	if terminated {
+		t.Owner.Status.DeleteCondition(StagePodsCreated)
+	}
+	t.Progress = progress
 	return terminated, nil
 }
 

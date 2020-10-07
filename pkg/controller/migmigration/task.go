@@ -2,6 +2,7 @@ package migmigration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
@@ -530,13 +531,6 @@ func (t *Task) Run() error {
 			t.fail(DestinationStagePodsFailed, report.reasons)
 			break
 		}
-		if report.started {
-			if err = t.next(); err != nil {
-				return liberr.Wrap(err)
-			}
-		} else {
-			t.Requeue = NoReQ
-		}
 		completed, reasons := t.hasRestoreCompleted(restore)
 		if completed {
 			t.setResticConditions(restore)
@@ -1033,4 +1027,20 @@ func (t *Task) getBothClientsWithNamespaces() ([]k8sclient.Client, [][]string, e
 	namespaceList := [][]string{t.sourceNamespaces(), t.destinationNamespaces()}
 
 	return clientList, namespaceList, nil
+}
+
+// Sets condition for an in-progress task
+func (t *Task) setInProgressCondition(progress []string) {
+	step, n, total := t.Itinerary.progressReport(t.Phase)
+	t.Owner.Status.SetCondition(migapi.Condition{
+		Type:     Running,
+		Status:   True,
+		Reason:   step,
+		Category: Advisory,
+		Message:  fmt.Sprintf(RunningMessage, n, total),
+		Progress: progress,
+	})
+	t.Client.Update(
+		context.TODO(),
+		t.Owner)
 }
