@@ -77,12 +77,12 @@ const (
 
 // Steps
 const (
-	StepPrepare     = "Prepare"
-	Backup          = "Backup"
-	VolumeBackup    = "VolumeBackup"
-	VolumeRestore   = "VolumeRestore"
-	ResourceRestore = "ResourceRestore"
-	Final           = "Final"
+	StepPrepare      = "Prepare"
+	StepBackup       = "Backup"
+	StepStageBackup  = "StageBackup"
+	StepStageRestore = "StageRestore"
+	StepRestore      = "Restore"
+	StepFinal        = "Final"
 )
 
 // Flags
@@ -114,7 +114,7 @@ var StageItinerary = Itinerary{
 			},
 		},
 		{
-			Name: VolumeBackup,
+			Name: StepStageBackup,
 			Phases: []Phases{
 				{phase: EnsureStagePodsFromRunning, all: HasPVs},
 				{phase: EnsureStagePodsFromTemplates, all: HasPVs},
@@ -131,7 +131,7 @@ var StageItinerary = Itinerary{
 			},
 		},
 		{
-			Name: VolumeRestore,
+			Name: StepStageRestore,
 			Phases: []Phases{
 				{phase: EnsureStageRestore, any: HasPVs | HasISs},
 				{phase: StageRestoreCreated, any: HasPVs | HasISs},
@@ -140,7 +140,7 @@ var StageItinerary = Itinerary{
 			},
 		},
 		{
-			Name: Final,
+			Name: StepFinal,
 			Phases: []Phases{
 				{phase: EnsureAnnotationsDeleted, any: HasPVs | HasISs},
 				{phase: Completed},
@@ -153,7 +153,7 @@ var FinalItinerary = Itinerary{
 	Name: "Final",
 	Steps: []Step{
 		{
-			Name: Prepare,
+			Name: StepPrepare,
 			Phases: []Phases{
 				{phase: Created},
 				{phase: Started},
@@ -164,7 +164,7 @@ var FinalItinerary = Itinerary{
 			},
 		},
 		{
-			Name: Backup,
+			Name: StepBackup,
 			Phases: []Phases{
 				{phase: PreBackupHooks},
 				{phase: EnsureInitialBackup},
@@ -172,7 +172,7 @@ var FinalItinerary = Itinerary{
 			},
 		},
 		{
-			Name: VolumeBackup,
+			Name: StepStageBackup,
 			Phases: []Phases{
 				{phase: EnsureStagePodsFromRunning, all: HasPVs},
 				{phase: EnsureStagePodsFromTemplates, all: HasPVs},
@@ -189,7 +189,7 @@ var FinalItinerary = Itinerary{
 			},
 		},
 		{
-			Name: VolumeRestore,
+			Name: StepStageRestore,
 			Phases: []Phases{
 				{phase: EnsureStageRestore, any: HasPVs | HasISs},
 				{phase: StageRestoreCreated, any: HasPVs | HasISs},
@@ -198,7 +198,7 @@ var FinalItinerary = Itinerary{
 			},
 		},
 		{
-			Name: ResourceRestore,
+			Name: StepRestore,
 			Phases: []Phases{
 				{phase: EnsureAnnotationsDeleted, any: HasPVs | HasISs},
 				{phase: EnsureInitialBackupReplicated},
@@ -210,7 +210,7 @@ var FinalItinerary = Itinerary{
 			},
 		},
 		{
-			Name: Final,
+			Name: StepFinal,
 			Phases: []Phases{
 				{phase: Verification, all: HasVerify},
 				{phase: Completed},
@@ -223,7 +223,7 @@ var CancelItinerary = Itinerary{
 	Name: "Cancel",
 	Steps: []Step{
 		{
-			Name: Final,
+			Name: StepFinal,
 			Phases: []Phases{
 				{phase: Canceling},
 				{phase: DeleteBackups},
@@ -244,7 +244,7 @@ var FailedItinerary = Itinerary{
 	Name: "Failed",
 	Steps: []Step{
 		{
-			Name: Final,
+			Name: StepFinal,
 			Phases: []Phases{
 				{phase: MigrationFailed},
 				{phase: EnsureStagePodsDeleted, all: HasStagePods},
@@ -296,7 +296,7 @@ type Phases struct {
 
 // Get a progress report.
 // Returns: phase, n, total.
-func (r Itinerary) progressReport(phase string) (string, int, int, string) {
+func (r Itinerary) progressReport(phase string) (int, int, string) {
 	n := 0
 	total := 0
 	currStep := ""
@@ -310,7 +310,7 @@ func (r Itinerary) progressReport(phase string) (string, int, int, string) {
 		total += len(r.Steps[j].Phases)
 	}
 
-	return phase, n, total, currStep
+	return n, total, currStep
 }
 
 // A Velero task that provides the complete backup & restore workflow.
@@ -790,7 +790,7 @@ func (t *Task) Run() error {
 			}
 		} else {
 			t.Phase = Completed
-			t.Step = Final
+			t.Step = StepFinal
 		}
 
 	case DeleteMigrated:
@@ -912,7 +912,7 @@ func (t *Task) next() error {
 	}
 	if current == -1 {
 		t.Phase = Completed
-		t.Step = Final
+		t.Step = StepFinal
 		return nil
 	}
 	for n := current + 1; n < len(allPhase); n++ {
@@ -936,7 +936,7 @@ func (t *Task) next() error {
 		return nil
 	}
 	t.Phase = Completed
-	t.Step = Final
+	t.Step = StepFinal
 	return nil
 }
 
@@ -996,11 +996,10 @@ func (t *Task) fail(nextPhase string, reasons []string) {
 	t.Owner.Status.SetCondition(migapi.Condition{
 		Type:     Failed,
 		Status:   True,
-		Reason:   t.Phase,
+		Reason:   t.Step,
 		Category: Advisory,
 		Message:  FailedMessage,
 		Durable:  true,
-		Step:     t.Step,
 	})
 	t.Phase = nextPhase
 }
