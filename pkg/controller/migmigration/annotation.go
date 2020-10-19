@@ -2,6 +2,7 @@ package migmigration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -156,7 +157,12 @@ func (t *Task) getResticVolumes(client k8sclient.Client, pod corev1.Pod) ([]stri
 
 // Add label to namespaces
 func (t *Task) labelNamespaces(client k8sclient.Client) error {
-	for _, ns := range t.sourceNamespaces() {
+	total := len(t.sourceNamespaces())
+	interval := total / 10
+	if interval == 0 {
+		interval = 1
+	}
+	for i, ns := range t.sourceNamespaces() {
 		namespace := corev1.Namespace{}
 		err := client.Get(
 			context.TODO(),
@@ -179,6 +185,15 @@ func (t *Task) labelNamespaces(client k8sclient.Client) error {
 			"NS annotations/labels added.",
 			"name",
 			namespace.Name)
+		if interval != 0 && i%interval == 0 {
+			t.setInProgressCondition([]string{fmt.Sprintf("%v/%v Namespace labeled", i, total)})
+		}
+		if i > (total - interval) {
+			interval = interval / 10
+			if interval == 0 {
+				interval = 1
+			}
+		}
 	}
 	return nil
 }
@@ -198,7 +213,12 @@ func (t *Task) annotatePods(client k8sclient.Client) (ServiceAccounts, error) {
 	if err != nil {
 		return nil, liberr.Wrap(err)
 	}
-	for _, pod := range list.Items {
+	total := len(list.Items)
+	interval := total / 10
+	if interval == 0 {
+		interval = 1
+	}
+	for i, pod := range list.Items {
 		// Annotate PVCs.
 		volumes, verifyVolumes, err := t.getResticVolumes(client, pod)
 		if err != nil {
@@ -228,6 +248,15 @@ func (t *Task) annotatePods(client k8sclient.Client) (ServiceAccounts, error) {
 		} else {
 			names[sa] = true
 		}
+		if interval != 0 && i%interval == 0 {
+			t.setInProgressCondition([]string{fmt.Sprintf("%v/%v Pods annotated", i, total)})
+		}
+		if i > (total - interval) {
+			interval = interval / 10
+			if interval == 0 {
+				interval = 1
+			}
+		}
 	}
 
 	return serviceAccounts, nil
@@ -242,7 +271,12 @@ func (t *Task) annotatePods(client k8sclient.Client) (ServiceAccounts, error) {
 // The PvCopyMethodAnnotation annotation is added to PV and PVC as needed by the velero plugin.
 func (t *Task) annotatePVs(client k8sclient.Client) error {
 	pvs := t.getPVs()
-	for _, pv := range pvs.List {
+	total := len(pvs.List)
+	interval := total / 10
+	if interval == 0 {
+		interval = 1
+	}
+	for i, pv := range pvs.List {
 		pvResource := corev1.PersistentVolume{}
 		err := client.Get(
 			context.TODO(),
@@ -321,6 +355,15 @@ func (t *Task) annotatePVs(client k8sclient.Client) error {
 			pv.PVC.Namespace,
 			"name",
 			pv.PVC.Name)
+		if interval != 0 && i%interval == 0 {
+			t.setInProgressCondition([]string{fmt.Sprintf("%v/%v PV/PVC annotated", i, total)})
+		}
+		if i > (total - interval) {
+			interval = interval / 10
+			if interval == 0 {
+				interval = 1
+			}
+		}
 	}
 
 	return nil
@@ -339,7 +382,12 @@ func (t *Task) labelServiceAccounts(client k8sclient.Client, serviceAccounts Ser
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		for _, sa := range list.Items {
+		total := len(list.Items)
+		interval := total / 10
+		if interval == 0 {
+			interval = 1
+		}
+		for i, sa := range list.Items {
 			if _, found := names[sa.Name]; !found {
 				continue
 			}
@@ -357,6 +405,15 @@ func (t *Task) labelServiceAccounts(client k8sclient.Client, serviceAccounts Ser
 				sa.Namespace,
 				"name",
 				sa.Name)
+			if interval != 0 && i%interval == 0 {
+				t.setInProgressCondition([]string{fmt.Sprintf("%v/%v SA annotated", i, total)})
+			}
+			if i > (total - interval) {
+				interval = interval / 10
+				if interval == 0 {
+					interval = 1
+				}
+			}
 		}
 	}
 	return nil
@@ -372,7 +429,12 @@ func (t *Task) labelImageStreams(client compat.Client) error {
 			log.Trace(err)
 			return err
 		}
-		for _, is := range imageStreamList.Items {
+		total := len(imageStreamList.Items)
+		interval := total / 10
+		if interval == 0 {
+			interval = 1
+		}
+		for i, is := range imageStreamList.Items {
 			if is.Labels == nil {
 				is.Labels = map[string]string{}
 			}
@@ -387,6 +449,15 @@ func (t *Task) labelImageStreams(client compat.Client) error {
 				is.Namespace,
 				"name",
 				is.Name)
+			if interval != 0 && i%interval == 0 {
+				t.setInProgressCondition([]string{fmt.Sprintf("%v/%v Imagestreams are labeled", i, total)})
+			}
+			if i > (total - interval) {
+				interval = interval / 10
+				if interval == 0 {
+					interval = 1
+				}
+			}
 		}
 	}
 
