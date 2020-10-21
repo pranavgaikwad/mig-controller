@@ -232,7 +232,7 @@ type Task struct {
 	Annotations     map[string]string
 	BackupResources mapset.Set
 	Phase           string
-	Progress        []string
+	Progress        []migapi.Progress
 	Requeue         time.Duration
 	Itinerary       Itinerary
 	Errors          []string
@@ -1030,7 +1030,7 @@ func (t *Task) getBothClientsWithNamespaces() ([]k8sclient.Client, [][]string, e
 }
 
 // Sets condition for an in-progress task
-func (t *Task) setInProgressCondition(progress []string) {
+func (t *Task) setInProgressCondition(progress []migapi.Progress) {
 	step, n, total := t.Itinerary.progressReport(t.Phase)
 	t.Owner.Status.SetCondition(migapi.Condition{
 		Type:     Running,

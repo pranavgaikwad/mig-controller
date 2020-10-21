@@ -424,7 +424,7 @@ func (t *Task) ensureDestinationStagePodsStarted() (report PodStartReport, err e
 }
 
 func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, err error) {
-	progress := []string{}
+	progress := []migapi.Progress{}
 	hasHealthyClaims := func(pod *corev1.Pod) (healthy bool) {
 		healthy = true
 		for _, vol := range pod.Spec.Volumes {
@@ -490,11 +490,20 @@ func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, e
 		if !ready {
 			progress = append(
 				progress,
-				fmt.Sprintf(
-					"Stage Pod %s/%s: Not running. Phase %s",
-					pod.Namespace,
-					pod.Name,
-					pod.Status.Phase))
+				migapi.Progress{
+					Message: fmt.Sprintf(
+						"Stage Pod %s/%s: Not running. Phase %s",
+						pod.Namespace,
+						pod.Name,
+						pod.Status.Phase),
+					RawProgress: map[string]string{
+						"Name":      pod.Name,
+						"Namespace": pod.Namespace,
+						"Kind":      pod.Kind,
+						"Phase":     fmt.Sprintf("%s", pod.Status.Phase),
+					},
+				})
+
 			report.started = false
 			if !hasHealthyClaims(&pod) {
 				report.failed = true
@@ -502,10 +511,18 @@ func (t *Task) stagePodReport(client k8sclient.Client) (report PodStartReport, e
 		} else {
 			progress = append(
 				progress,
-				fmt.Sprintf(
-					"Stage Pod %s/%s: Running",
-					pod.Namespace,
-					pod.Name))
+				migapi.Progress{
+					Message: fmt.Sprintf(
+						"Stage Pod %s/%s: Running",
+						pod.Namespace,
+						pod.Name),
+					RawProgress: map[string]string{
+						"Name":      pod.Name,
+						"Namespace": pod.Namespace,
+						"Kind":      pod.Kind,
+						"Phase":     fmt.Sprintf("%s", pod.Status.Phase),
+					},
+				})
 
 		}
 	}
@@ -545,7 +562,7 @@ func (t *Task) ensureStagePodsDeleted() error {
 
 // Ensure the deleted stage pods have finished terminating
 func (t *Task) ensureStagePodsTerminated() (bool, error) {
-	progress := []string{}
+	progress := []migapi.Progress{}
 	clients, err := t.getBothClients()
 	if err != nil {
 		return false, liberr.Wrap(err)
@@ -569,17 +586,33 @@ func (t *Task) ensureStagePodsTerminated() (bool, error) {
 			if terminatedPhases[pod.Status.Phase] {
 				progress = append(
 					progress,
-					fmt.Sprintf(
-						"Stage Pod %s/%s: Not terminated yet",
-						pod.Namespace,
-						pod.Name))
+					migapi.Progress{
+						Message: fmt.Sprintf(
+							"Stage Pod %s/%s: Not terminated yet",
+							pod.Namespace,
+							pod.Name),
+						RawProgress: map[string]string{
+							"Name":      pod.Name,
+							"Namespace": pod.Namespace,
+							"Kind":      pod.Kind,
+							"Phase":     fmt.Sprintf("%s", pod.Status.Phase),
+						},
+					})
 			} else {
 				progress = append(
 					progress,
-					fmt.Sprintf(
-						"Stage Pod %s/%s: Not terminated yet",
-						pod.Namespace,
-						pod.Name))
+					migapi.Progress{
+						Message: fmt.Sprintf(
+							"Stage Pod %s/%s: Not terminated yet",
+							pod.Namespace,
+							pod.Name),
+						RawProgress: map[string]string{
+							"Name":      pod.Name,
+							"Namespace": pod.Namespace,
+							"Kind":      pod.Kind,
+							"Phase":     fmt.Sprintf("%s", pod.Status.Phase),
+						},
+					})
 				terminated = false
 			}
 		}

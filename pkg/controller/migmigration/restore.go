@@ -3,7 +3,9 @@ package migmigration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	liberr "github.com/konveyor/controller/pkg/error"
 	migapi "github.com/konveyor/mig-controller/pkg/apis/migration/v1alpha1"
@@ -152,52 +154,77 @@ func (t *Task) getPodVolumeRestoresForRestore(restore *velero.Restore) *velero.P
 	return &list
 }
 
+// get progress for podvolumerestores
+func (t *Task) PVRMessage(pvr velero.PodVolumeRestore, msg string) migapi.Progress {
+	progress := migapi.Progress{}
+	progress.Message = msg
+	progress.CreatedTimestamp = pvr.Status.StartTimestamp
+	if pvr.Status.CompletionTimestamp != nil {
+		progress.LastUpdated = pvr.Status.CompletionTimestamp
+	} else {
+		progress.LastUpdated = &metav1.Time{Time: time.Now()}
+	}
+	progress.RawProgress = map[string]string{
+		"Kind":      pvr.Kind,
+		"Name":      pvr.Name,
+		"Namespace": pvr.Namespace,
+	}
+	if pvr.Status.Progress != (velero.PodVolumeOperationProgress{}) {
+		progress.RawProgress["TotalBytes"] = bytesToSI(pvr.Status.Progress.TotalBytes)
+		progress.RawProgress["BytesDone"] = bytesToSI(pvr.Status.Progress.BytesDone)
+	}
+	return progress
+}
+
 // Get whether a resource has completed on the destination cluster.
 func (t *Task) hasRestoreCompleted(restore *velero.Restore) (bool, []string) {
 	completed := false
 	reasons := []string{}
-	progress := []string{}
+	var progress []migapi.Progress
 
 	pvrs := t.getPodVolumeRestoresForRestore(restore)
 
-	getPodVolumeRestoresProgress := func(pvrList *velero.PodVolumeRestoreList) (progress []string) {
+	getPodVolumeRestoresProgress := func(pvrList *velero.PodVolumeRestoreList) (progress []migapi.Progress) {
 		if pvrList == nil {
 			return
 		}
+		m, keys, msg := make(map[string]migapi.Progress), make([]string, 0), migapi.Progress{}
 		for _, pvr := range pvrList.Items {
 			switch pvr.Status.Phase {
 			case velero.PodVolumeRestorePhaseInProgress:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeRestore %s/%s: %s out of %s restored",
-						pvr.Namespace,
-						pvr.Name,
-						bytesToSI(pvr.Status.Progress.BytesDone),
-						bytesToSI(pvr.Status.Progress.TotalBytes)))
+				msg = t.PVRMessage(pvr, fmt.Sprintf(
+					"PodVolumeRestore %s/%s: %s out of %s restored (%s)",
+					pvr.Namespace,
+					pvr.Name,
+					bytesToSI(pvr.Status.Progress.BytesDone),
+					bytesToSI(pvr.Status.Progress.TotalBytes),
+					time.Now().Sub(pvr.Status.StartTimestamp.Time)))
 			case velero.PodVolumeRestorePhaseCompleted:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeRestore %s/%s: Completed (%s restored)",
-						pvr.Namespace,
-						pvr.Name,
-						bytesToSI(pvr.Status.Progress.TotalBytes)))
+				msg = t.PVRMessage(pvr, fmt.Sprintf(
+					"PodVolumeRestore %s/%s: Completed, %s restored (%s)",
+					pvr.Namespace,
+					pvr.Name,
+					bytesToSI(pvr.Status.Progress.TotalBytes),
+					pvr.Status.CompletionTimestamp.Sub(pvr.Status.StartTimestamp.Time)))
 			case velero.PodVolumeRestorePhaseFailed:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeRestore %s/%s: Failed",
-						pvr.Namespace,
-						pvr.Name))
+				msg = t.PVRMessage(pvr, fmt.Sprintf(
+					"PodVolumeRestore %s/%s: Failed, (%s)",
+					pvr.Namespace,
+					pvr.Name,
+					pvr.Status.CompletionTimestamp.Sub(pvr.Status.StartTimestamp.Time)))
 			default:
-				progress = append(
-					progress,
-					fmt.Sprintf(
-						"PodVolumeRestore %s/%s: Waiting for ongoing volume restore to finish",
-						pvr.Namespace,
-						pvr.Name))
+				msg = t.PVRMessage(pvr, fmt.Sprintf(
+					"PodVolumeRestore %s/%s: Waiting for ongoing volume restore(s) to complete",
+					pvr.Namespace,
+					pvr.Name))
 			}
+			m[pvr.Namespace+"/"+pvr.Name] = msg
+			keys = append(keys, pvr.Namespace+"/"+pvr.Name)
+		}
+		// sort the progress array to maintain order everytime it's updated
+		sort.Strings(keys)
+		for _, k := range keys {
+			progress = append(progress, m[k])
 		}
 		return
 	}
@@ -206,18 +233,33 @@ func (t *Task) hasRestoreCompleted(restore *velero.Restore) (bool, []string) {
 	case velero.RestorePhaseNew:
 		progress = append(
 			progress,
-			fmt.Sprintf(
-				"Backup %s/%s: Not started yet",
-				restore.Namespace,
-				restore.Name))
+			migapi.Progress{
+				Message: fmt.Sprintf(
+					"Restore %s/%s: Not started yet",
+					restore.Namespace,
+					restore.Name),
+				RawProgress: map[string]string{
+					"Kind":      restore.Kind,
+					"Name":      restore.Name,
+					"Namespace": restore.Namespace,
+				},
+			})
 	case velero.RestorePhaseInProgress:
 		progress = append(
 			progress,
-			fmt.Sprintf(
-				"Restore %s/%s: %s",
-				restore.Namespace,
-				restore.Name,
-				restore.Status.Phase))
+			migapi.Progress{
+				Message: fmt.Sprintf(
+					"Restore %s/%s: %s",
+					restore.Namespace,
+					restore.Name,
+					restore.Status.Phase),
+				RawProgress: map[string]string{
+					"Kind":      restore.Kind,
+					"Name":      restore.Name,
+					"Namespace": restore.Namespace,
+					"Phase":     fmt.Sprintf("%s", restore.Status.Phase),
+				},
+			})
 		progress = append(
 			progress,
 			getPodVolumeRestoresProgress(pvrs)...)
@@ -225,11 +267,19 @@ func (t *Task) hasRestoreCompleted(restore *velero.Restore) (bool, []string) {
 		completed = true
 		progress = append(
 			progress,
-			fmt.Sprintf(
-				"Restore %s/%s: %s",
-				restore.Namespace,
-				restore.Name,
-				restore.Status.Phase))
+			migapi.Progress{
+				Message: fmt.Sprintf(
+					"Restore %s/%s: %s",
+					restore.Namespace,
+					restore.Name,
+					restore.Status.Phase),
+				RawProgress: map[string]string{
+					"Kind":      restore.Kind,
+					"Name":      restore.Name,
+					"Namespace": restore.Namespace,
+					"Phase":     fmt.Sprintf("%s", restore.Status.Phase),
+				},
+			})
 		progress = append(
 			progress,
 			getPodVolumeRestoresProgress(pvrs)...)
@@ -249,9 +299,12 @@ func (t *Task) hasRestoreCompleted(restore *velero.Restore) (bool, []string) {
 				"Restore: %s/%s partially failed.",
 				restore.Namespace,
 				restore.Name))
-		reasons = append(
-			reasons,
-			getPodVolumeRestoresProgress(pvrs)...)
+		temp := getPodVolumeRestoresProgress(pvrs)
+		for _, pr := range temp {
+			reasons = append(
+				reasons, pr.Message,
+			)
+		}
 	case velero.RestorePhaseFailedValidation:
 		reasons = restore.Status.ValidationErrors
 		reasons = append(

@@ -87,31 +87,31 @@ func (t *Task) annotateStageResources() error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Adding labels on namespaces"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Adding labels on namespaces"}})
 	// Namespaces
 	err = t.labelNamespaces(sourceClient)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Annotating pods"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Annotating pods"}})
 	// Pods
 	serviceAccounts, err := t.annotatePods(sourceClient)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Adding labels on persistent volumes"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Adding labels on persistent volumes"}})
 	// PV & PVCs
 	err = t.annotatePVs(sourceClient)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Adding labels on service accounts"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Adding labels on service accounts"}})
 	// Service accounts used by stage pods.
 	err = t.labelServiceAccounts(sourceClient, serviceAccounts)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Adding labels on image streams"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Adding labels on image streams"}})
 	err = t.labelImageStreams(sourceClient)
 	if err != nil {
 		return liberr.Wrap(err)
@@ -401,32 +401,32 @@ func (t *Task) deleteAnnotations() error {
 	}
 
 	for i, client := range clients {
-		t.setInProgressCondition([]string{"Deleting migration annotations on PVCs"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration annotations on PVCs"}})
 		err = t.deletePVCAnnotations(client, namespaceList[i])
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		t.setInProgressCondition([]string{"Deleting migration annotations on PVs"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration annotations on PVs"}})
 		err = t.deletePVAnnotations(client)
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		t.setInProgressCondition([]string{"Deleting migration annotations on Pods"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration annotations on Pods"}})
 		err = t.deletePodAnnotations(client, namespaceList[i])
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		t.setInProgressCondition([]string{"Deleting migration labels on namespaces"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration labels on namespaces"}})
 		err = t.deleteNamespaceLabels(client, namespaceList[i])
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		t.setInProgressCondition([]string{"Deleting migration labels on service accounts"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration labels on service accounts"}})
 		err = t.deleteServiceAccountLabels(client)
 		if err != nil {
 			return liberr.Wrap(err)
 		}
-		t.setInProgressCondition([]string{"Deleting migration labels on image streams"})
+		t.setInProgressCondition([]migapi.Progress{{Message: "Deleting migration labels on image streams"}})
 		err = t.deleteImageStreamLabels(client, namespaceList[i])
 		if err != nil {
 			return liberr.Wrap(err)

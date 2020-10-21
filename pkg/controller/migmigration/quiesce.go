@@ -3,6 +3,7 @@ package migmigration
 import (
 	"context"
 	"encoding/json"
+	migapi "github.com/konveyor/mig-controller/pkg/apis/migration/v1alpha1"
 	"strconv"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -21,37 +22,37 @@ func (t *Task) quiesceApplications() error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing cron jobs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing cron jobs"}})
 	err = t.quiesceCronJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing deployment configs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing deployment configs"}})
 	err = t.quiesceDeploymentConfigs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing deployments"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing deployments"}})
 	err = t.quiesceDeployments(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing stateful sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing stateful sets"}})
 	err = t.quiesceStatefulSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing replica sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing replica sets"}})
 	err = t.quiesceReplicaSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing daemon sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing daemon sets"}})
 	err = t.quiesceDaemonSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Quesceing jobs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Quesceing jobs"}})
 	err = t.quiesceJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
@@ -66,37 +67,37 @@ func (t *Task) unQuiesceApplications() error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing cron jobs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing cron jobs"}})
 	err = t.unQuiesceCronJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing deployment configs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing deployment configs"}})
 	err = t.unQuiesceDeploymentConfigs(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing deployments"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing deployments"}})
 	err = t.unQuiesceDeployments(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing stateful sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing stateful sets"}})
 	err = t.unQuiesceStatefulSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing replica sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing replica sets"}})
 	err = t.unQuiesceReplicaSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing daemon sets"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing daemon sets"}})
 	err = t.unQuiesceDaemonSets(client)
 	if err != nil {
 		return liberr.Wrap(err)
 	}
-	t.setInProgressCondition([]string{"Un-quesceing jobs"})
+	t.setInProgressCondition([]migapi.Progress{{Message: "Un-quesceing jobs"}})
 	err = t.unQuiesceJobs(client)
 	if err != nil {
 		return liberr.Wrap(err)
