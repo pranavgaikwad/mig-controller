@@ -869,16 +869,16 @@ func (t *Task) init() error {
 
 // Advance the task to the next phase.
 func (t *Task) next() error {
-	var allPhase []Phase
+	var allPhases []Phase
 	var allSteps []string
 	for i, s := range t.Itinerary.Steps {
 		for _, p := range s.Phases {
-			allPhase = append(allPhase, p)
+			allPhases = append(allPhases, p)
 			allSteps = append(allSteps, t.Itinerary.Steps[i].Name)
 		}
 	}
 	current := -1
-	for i, phase := range allPhase {
+	for i, phase := range allPhases {
 		if phase.Name != t.Phase {
 			continue
 		}
@@ -890,8 +890,8 @@ func (t *Task) next() error {
 		t.Step = StepFinal
 		return nil
 	}
-	for n := current + 1; n < len(allPhase); n++ {
-		next := allPhase[n]
+	for n := current + 1; n < len(allPhases); n++ {
+		next := allPhases[n]
 		flag, err := t.allFlags(next)
 		if err != nil {
 			return liberr.Wrap(err)
