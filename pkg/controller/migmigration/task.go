@@ -297,19 +297,6 @@ type Task struct {
 	Step            string
 }
 
-func (r Itinerary) getCurrentStep(phase string) string {
-	currStep := ""
-	for j := 0; j < len(r.Steps); j++ {
-		for _, step := range r.Steps[j].Phases {
-			if step.Name == phase {
-				currStep = r.Steps[j].Name
-				return currStep
-			}
-		}
-	}
-	return currStep
-}
-
 // Run the task.
 // Each call will:
 //   1. Run the current phase.
@@ -1118,3 +1105,4 @@ func (r *Itinerary) GetStepForPhase(phaseName string) string {
 	}
 	return ""
 }
+
