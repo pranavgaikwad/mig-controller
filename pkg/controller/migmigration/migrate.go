@@ -83,7 +83,7 @@ func (r *ReconcileMigMigration) migrate(migration *migapi.MigMigration) (time.Du
 			migration.Status.SetCondition(migapi.Condition{
 				Type:     Succeeded,
 				Status:   True,
-				Reason:   task.Step,
+				Reason:   task.Itinerary.GetStepForPhase(task.Phase),
 				Category: Advisory,
 				Message:  SucceededMessage,
 				Durable:  true,
@@ -103,7 +103,7 @@ func (r *ReconcileMigMigration) migrate(migration *migapi.MigMigration) (time.Du
 	migration.Status.SetCondition(migapi.Condition{
 		Type:     Running,
 		Status:   True,
-		Reason:   task.Step,
+		Reason:   task.Itinerary.GetStepForPhase(task.Phase),
 		Category: Advisory,
 		Message:  message,
 	})
