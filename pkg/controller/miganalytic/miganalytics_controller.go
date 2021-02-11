@@ -212,7 +212,7 @@ func (r *ReconcileMigAnalytic) analyze(analytic *migapi.MigAnalytic) error {
 		return liberr.Wrap(err)
 	}
 
-	if analytic.Status.Analytics.PercentComplete == 100 {
+	if analytic.Status.Analytics.PercentComplete == 100 && !analytic.Spec.Refresh {
 		return nil
 	}
 
@@ -235,6 +235,8 @@ func (r *ReconcileMigAnalytic) analyze(analytic *migapi.MigAnalytic) error {
 	if err != nil {
 		return liberr.Wrap(err)
 	}
+
+	nodeToPVMap := make(map[string][]MigAnalyticPersistentVolumeDetails)
 
 	analytic.Status.Analytics.Plan = plan.Name
 
@@ -263,6 +265,7 @@ func (r *ReconcileMigAnalytic) analyze(analytic *migapi.MigAnalytic) error {
 				return liberr.Wrap(err)
 			}
 		}
+
 		if analytic.Spec.AnalyzePVCapacity && !(isExcluded("persistentvolumes", excludedResources) &&
 			isExcluded("persistentvolumeclaims", excludedResources)) {
 
@@ -273,7 +276,13 @@ func (r *ReconcileMigAnalytic) analyze(analytic *migapi.MigAnalytic) error {
 		}
 
 		if analytic.Spec.AnalyzeExntendedPVCapacity {
-			err := r.analyzeExtendedPVCapacity(client, &ns)
+			namespacedNodeToPVMap, err := r.getNodeToPVMapForNS(&ns, client)
+			for node, pvcs := range namespacedNodeToPVMap {
+				if _, exists := nodeToPVMap[node]; !exists {
+					nodeToPVMap[node] = make([]MigAnalyticPersistentVolumeDetails, 0)
+				}
+				nodeToPVMap[node] = append(nodeToPVMap[node], pvcs...)
+			}
 			if err != nil {
 				return liberr.Wrap(err)
 			}
@@ -294,10 +303,31 @@ func (r *ReconcileMigAnalytic) analyze(analytic *migapi.MigAnalytic) error {
 			return liberr.Wrap(err)
 		}
 	}
+
+	if analytic.Spec.AnalyzeExntendedPVCapacity {
+		err := r.analyzeExtendedPVCapacity(client, analytic, nodeToPVMap)
+		if err != nil {
+			return liberr.Wrap(err)
+		}
+	}
+
 	return nil
 }
 
-func (r *ReconcileMigAnalytic) analyzeExtendedPVCapacity(client compat.Client, ns *migapi.MigAnalyticNamespace) error {
+func (r *ReconcileMigAnalytic) analyzeExtendedPVCapacity(client compat.Client, analytic *migapi.MigAnalytic, nodeToPVMap map[string][]MigAnalyticPersistentVolumeDetails) error {
+	volumeAdjuster := PersistentVolumeAdjuster{
+		Owner:  analytic,
+		Client: client,
+		DFExecutor: &ResticDFCommandExecutor{
+			Namespace: migapi.VeleroNamespace,
+			BaseUnit:  resource.DecimalSI,
+			Client:    client,
+		},
+	}
+	err := volumeAdjuster.Run(nodeToPVMap)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
