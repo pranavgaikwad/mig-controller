@@ -38,6 +38,7 @@ type ManagerConfig struct {
 	// MigMigration v1.Object and runtime.Object needed for remote cluster to properly forward events
 	ParentMeta   v1.Object
 	ParentObject runtime.Object
+	Scheme       *runtime.Scheme
 }
 
 // TODO: add support for forwarding events to multiple channels so that MigStage and

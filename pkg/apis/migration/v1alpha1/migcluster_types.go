@@ -195,8 +195,10 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		return nil, err
 	}
 
+	rwStarted := false
 	// Build client without cache if remote watch hasn't been started yet
 	if rClient == nil {
+		rwStarted = true
 		uncachedClient, err := k8sclient.New(
 			restConfig,
 			k8sclient.Options{
@@ -212,8 +214,9 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	clientMap[m.UID] = client
+	if rwStarted {
+		clientMap[m.UID] = compatClient
+	}
 	return compatClient, nil
 }
 

@@ -31,7 +31,7 @@ import (
 func StartRemoteWatch(r *ReconcileMigCluster, config remote.ManagerConfig) error {
 	remoteWatchMap := remote.GetWatchMap()
 
-	mgr, err := manager.New(config.RemoteRestConfig, manager.Options{})
+	mgr, err := manager.New(config.RemoteRestConfig, manager.Options{Scheme: config.Scheme})
 	if err != nil {
 		return liberr.Wrap(err)
 	}
