@@ -27,6 +27,7 @@ import (
 	liberr "github.com/konveyor/controller/pkg/error"
 	pvdr "github.com/konveyor/mig-controller/pkg/cloudprovider"
 	"github.com/konveyor/mig-controller/pkg/compat"
+	"github.com/konveyor/mig-controller/pkg/remote"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -146,18 +147,62 @@ func (m *MigCluster) GetServiceAccountSecret(client k8sclient.Client) (*kapi.Sec
 	return GetSecret(client, m.Spec.ServiceAccountSecretRef)
 }
 
+// // GetClient get a local or remote client using a MigCluster and an existing client
+// func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
+// 	restConfig, err := m.BuildRestConfig(c)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	client, err := compat.NewClient(restConfig)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return client, nil
+// }
+
+// GetClient get a local or remote client using a MigCluster and an existing client
 // GetClient get a local or remote client using a MigCluster and an existing client
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
+	// Building a compat client requires both restConfig and a k8s client
+	var rClient *k8sclient.Client
+
+	// Retrieve cached client if it exists
+	if m.Spec.IsHostCluster {
+		rClient = &c
+	} else {
+		rwm := remote.GetWatchMap()
+		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
+		if remoteCluster != nil {
+			cachedClient := remoteCluster.RemoteManager.GetClient()
+			rClient = &cachedClient
+		}
+	}
+
 	restConfig, err := m.BuildRestConfig(c)
 	if err != nil {
 		return nil, err
 	}
-	client, err := compat.NewClient(restConfig)
+
+	// Build client without cache if remote watch hasn't been started yet
+	if rClient == nil {
+		uncachedClient, err := k8sclient.New(
+			restConfig,
+			k8sclient.Options{
+				Scheme: scheme.Scheme,
+			})
+		if err != nil {
+			return nil, err
+		}
+		rClient = &uncachedClient
+	}
+
+	compatClient, err := compat.NewClient(restConfig, rClient)
 	if err != nil {
 		return nil, err
 	}
 
-	return client, nil
+	return compatClient, nil
 }
 
 func (m *MigCluster) GetClusterConfigMap(c k8sclient.Client) (*corev1.ConfigMap, error) {
