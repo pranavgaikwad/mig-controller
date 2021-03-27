@@ -99,6 +99,12 @@ type MigClusterStatus struct {
 	OperatorVersion string `json:"operatorVersion,omitempty"`
 }
 
+var clientMap map[types.UID]compat.Client
+
+func init() {
+	clientMap = make(map[types.UID]compat.Client)
+}
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -164,6 +170,11 @@ func (m *MigCluster) GetServiceAccountSecret(client k8sclient.Client) (*kapi.Sec
 // GetClient get a local or remote client using a MigCluster and an existing client
 // GetClient get a local or remote client using a MigCluster and an existing client
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
+	client, ok := clientMap[m.UID]
+	if ok {
+		return client, nil
+	}
+
 	// Building a compat client requires both restConfig and a k8s client
 	var rClient *k8sclient.Client
 
@@ -202,6 +213,7 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		return nil, err
 	}
 
+	clientMap[m.UID] = client
 	return compatClient, nil
 }
 
