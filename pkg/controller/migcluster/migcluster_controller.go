@@ -236,12 +236,12 @@ func (r *ReconcileMigCluster) setupRemoteWatch(cluster *migapi.MigCluster) error
 			return liberr.Wrap(err)
 		}
 	}
-
 	StartRemoteWatch(r, remote.ManagerConfig{
 		RemoteRestConfig: restCfg,
 		ParentNsName:     nsName,
 		ParentMeta:       cluster.GetObjectMeta(),
 		ParentObject:     cluster,
+		Scheme:           r.scheme,
 	})
 
 	log.Info("Remote watch started.", "cluster", cluster.Name)

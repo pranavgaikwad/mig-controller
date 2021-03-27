@@ -3,17 +3,23 @@ package compat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	golog "log"
 
 	appsv1 "k8s.io/api/apps/v1"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	batchv1beta "k8s.io/api/batch/v1beta1"
 	batchv2alpha "k8s.io/api/batch/v2alpha1"
 	extv1beta1 "k8s.io/api/extensions/v1beta1"
+	k8serror "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	dapi "k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -217,7 +223,98 @@ func (c client) Create(ctx context.Context, in runtime.Object) error {
 	}
 
 	start := time.Now()
+
+	// First create
 	err = c.Client.Create(ctx, obj)
+	// If no error, verify thing we created exist in cache
+	if err == nil {
+		cacheCaughtUp := false
+		for !cacheCaughtUp {
+			kind := obj.GetObjectKind()
+			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
+			if err != nil {
+				golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+			}
+			uNs, found, err := unstructured.NestedString(u, "metadata", "namespace")
+			if err != nil || !found {
+				golog.Printf("[kind=%v] meta.namespace not found", kind)
+				break
+			}
+			uName, found, err := unstructured.NestedString(u, "metadata", "name")
+			if err != nil || !found {
+				golog.Printf("[kind=%v] meta.name not found", kind)
+				break
+			}
+			// uGeneration, found, err := unstructured.NestedString(u, "metadata", "generation")
+			// if err != nil || !found {
+			// 	golog.Printf("[kind=%v] meta.generation not found", kind)
+			// 	break
+			// }
+			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[CREATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, uNs, uName))
+			// break
+			// NEXT, let's try to get the object.
+			key := types.NamespacedName{Name: uName, Namespace: uNs}
+			placeholder := obj.DeepCopyObject()
+			err = c.Get(context.TODO(), key, placeholder)
+			if err != nil {
+				if k8serror.IsNotFound(err) {
+					golog.Print(fmt.Sprintf("[!!!] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
+					continue
+				} else {
+					golog.Print(fmt.Sprintf("[<<<] Error checking on cache: [kind=%v] [key=%v]", kind, key))
+					return err
+				}
+			}
+			golog.Print("[DONE] CACHE CAUGHT UP!\n\n\n")
+			cacheCaughtUp = true
+			// err = c.Get(context.TODO(), key, &placeholder)
+			// if err != nil {
+			// 	if k8serror.IsNotFound(err) {
+			// 		golog.Print(fmt.Sprintf("[!!!] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
+			// 	} else {
+			// 		golog.Print(fmt.Sprintf("[<<<] Error checking on cache: [kind=%v] [key=%v]", kind, key))
+			// 		return err
+			// 	}
+			// }
+			// pMeta, ok := placeholder["metadata"].(map[string]interface{})
+			// if !ok {
+			// 	golog.Printf("GET - conversion failed not found: u: %T, metadata: %T\n", u, meta)
+			// 	break
+			// }
+			// pGeneration := pMeta.
+
+			// if placeholder.GetGeneration() >= uGeneration {
+			// 	golog.Print(fmt.Sprintf("[OK] Cache is caught up: [kind=%v] [key=%v]", kind, key))
+			// 	cacheCaughtUp = true
+			// }
+			// name, ok := meta
+			// break
+			// u, ok := in.(*unstructured.Unstructured)
+			// if !ok {
+			// 	golog.Print(fmt.Sprintf("unstructured client did not understand object: %T", obj))
+			// 	break
+			// }
+			// key := types.NamespacedName{Name: u.GetName(), Namespace: u.GetNamespace()}
+			// kind := u.GetKind()
+			// expectedGeneration := u.GetGeneration()
+			// // Ask for object back from cache
+			// placeholder := unstructured.Unstructured{}
+			// err = c.Get(context.TODO(), key, &placeholder)
+			// if err != nil {
+			// 	if k8serror.IsNotFound(err) {
+			// 		golog.Print(fmt.Sprintf("[!!!] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
+			// 	} else {
+			// 		golog.Print(fmt.Sprintf("[<<<] Error checking on cache: [kind=%v] [key=%v]", kind, key))
+			// 		return err
+			// 	}
+			// }
+			// if placeholder.GetGeneration() >= expectedGeneration {
+			// 	golog.Print(fmt.Sprintf("[OK] Cache is caught up: [kind=%v] [key=%v]", kind, key))
+			// 	cacheCaughtUp = true
+			// }
+		}
+	}
+
 	elapsed := float64(time.Since(start) / nanoToMilli)
 	Metrics.Create(c, in, elapsed)
 
