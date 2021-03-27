@@ -19,11 +19,10 @@ package remote
 import (
 	"sync"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -46,9 +45,8 @@ type ManagerConfig struct {
 
 // WatchCluster tracks Remote Managers and Event Forward Channels
 type WatchCluster struct {
-	ForwardChannel chan event.GenericEvent
-	RemoteManager  manager.Manager
-	StopChannel    chan<- struct{}
+	RemoteManager manager.Manager
+	StopChannel   chan<- struct{}
 }
 
 // WatchMap provides a map between MigCluster nsNames and RemoteWatchClusters
