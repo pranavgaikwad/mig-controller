@@ -286,6 +286,43 @@ func (c client) Delete(ctx context.Context, in runtime.Object, opt ...k8sclient.
 	return err
 }
 
+func getNsName(in runtime.Object) (types.NamespacedName, error) {
+	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
+	if err != nil {
+		golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+	}
+	ns, found, err := unstructured.NestedString(u, "metadata", "namespace")
+	if err != nil || !found {
+		golog.Printf("meta.namespace not found")
+		return types.NamespacedName{}, nil
+	}
+	name, found, err := unstructured.NestedString(u, "metadata", "name")
+	if err != nil || !found {
+		golog.Printf("meta.name not found")
+		return types.NamespacedName{}, nil
+	}
+	return types.NamespacedName{Namespace: ns, Name: name}, nil
+}
+
+func getResourceVersion(in runtime.Object) (int, error) {
+	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
+	if err != nil {
+		golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+		return 0, err
+	}
+	resourceVersion, found, err := unstructured.NestedString(u, "metadata", "resourceVersion")
+	if err != nil || !found {
+		golog.Printf("meta.generation not found")
+		return 0, err
+	}
+	resourceVersionInt, err := strconv.Atoi(resourceVersion)
+	if err != nil {
+		golog.Print("failed to convert resourceVersion to int")
+		return 0, err
+	}
+	return resourceVersionInt, nil
+}
+
 // Update the specified resource.
 // The resource will be converted to a compatible version as needed.
 func (c client) Update(ctx context.Context, in runtime.Object) error {
@@ -295,13 +332,14 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 	}
 
 	start := time.Now()
+	// Consider doing a c.Get to check the generation ahead of update.
 	err = c.Client.Update(ctx, obj)
-
+	golog.Printf("\n\n\n\n [kind=%v] [!] [UPDATE]\n\n\n\n\n ", in.GetObjectKind())
 	// If no error, verify thing we created exist in cache
 	if err == nil {
 		for true {
 			kind := obj.GetObjectKind()
-			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
+			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 			if err != nil {
 				golog.Print(fmt.Sprintf("[UPDATE] unstructured client did not understand object with err: %T", err))
 			}
@@ -315,9 +353,9 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 				golog.Printf("[kind=%v] meta.name not found", kind)
 				break
 			}
-			uGeneration, found, err := unstructured.NestedString(u, "metadata", "generation")
+			uRV, found, err := unstructured.NestedString(u, "metadata", "resourceVersion")
 			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.generation not found", kind)
+				golog.Printf("[kind=%v] meta.resourceVersion not found", kind)
 				break
 			}
 			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[UPDATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, uNs, uName))
@@ -340,12 +378,21 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 				golog.Print(fmt.Sprintf("[UPDATE2] unstructured client did not understand object with err: %T", err))
 				break
 			}
-			newGeneration, found, err := unstructured.NestedString(uOut, "metadata", "generation")
+			newRV, found, err := unstructured.NestedString(uOut, "metadata", "resourceVersion")
 			if err != nil || !found {
 				golog.Printf("[kind=%v] meta.generation not found on uOut", kind)
 				break
 			}
-			if newGeneration >= uGeneration {
+			uRVint, err := strconv.Atoi(uRV)
+			if err != nil {
+				golog.Print(fmt.Sprintf("[UPDATE2] failed to convert uRV to int: %T", err))
+			}
+			newRVint, err := strconv.Atoi(newRV)
+			if err != nil {
+				golog.Print(fmt.Sprintf("[UPDATE2] failed to convert uRV to int: %T", err))
+			}
+
+			if newRVint >= uRVint {
 				golog.Printf("[DONE] CACHE CAUGHT UP after time=%v!\n\n\n", time.Since(start))
 				break
 			} else {
