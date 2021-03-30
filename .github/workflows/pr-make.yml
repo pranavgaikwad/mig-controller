@@ -13,3 +13,5 @@ jobs:
         uses: actions/checkout@v2
       - name: Make test
         run: make test
+        env:
+          GOBIN: "/home/runner/go/bin"
