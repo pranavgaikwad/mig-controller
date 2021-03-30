@@ -5,17 +5,12 @@ jobs:
     name: Run make
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v2
-      - name: Gopath
-        run: |
-          echo "##[set-env name=GOPATH;]$(dirname $GITHUB_WORKSPACE)"
-          echo "##[add-path]$(dirname $GITHUB_WORKSPACE)/bin"
-        shell: bash
       - name: Setup Go
         uses: actions/setup-go@v2
         with:
           go-version: 1.15
+      - name: Check out the code
+        uses: actions/checkout@v2
       - name: Make test
         run: make test
         env:
