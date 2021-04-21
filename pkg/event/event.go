@@ -22,7 +22,7 @@ func GetAbnormalEventsForResource(client client.Client,
 
 	eList := corev1.EventList{}
 	options := k8sclient.InNamespace(nsName.Namespace)
-	fieldSelector := fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=%s,type!=Normal",
+	fieldSelector := fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=%s,type=Warning",
 		nsName.Name, resourceKind)
 	err := options.SetFieldSelector(fieldSelector)
 	if err != nil {
