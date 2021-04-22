@@ -37,8 +37,8 @@ func StartRemoteWatch(r *ReconcileMigCluster, config remote.ManagerConfig) error
 	}
 
 	sigStopChan := make(chan struct{})
-	log.Info("[Remote Watch] Starting manager for MigCluster",
-		"migCluster", config.ParentObject)
+	log.Info("Remote cache: Starting manager for MigCluster",
+		"migCluster", config.ParentNsName)
 	go mgr.Start(sigStopChan)
 
 	// Indexes
@@ -77,8 +77,8 @@ func StartRemoteWatch(r *ReconcileMigCluster, config remote.ManagerConfig) error
 		return err
 	}
 
-	log.Info("[Remote Watch] Manager started for MigCluster",
-		"migCluster", config.ParentObject)
+	log.Info("Remote cache: Manager started for MigCluster",
+		"migCluster", config.ParentNsName)
 
 	// TODO: provide a way to dynamically change where events are being forwarded to (multiple controllers)
 	// Create remoteWatchCluster tracking obj and attach reference to parent object so we don't create extra
