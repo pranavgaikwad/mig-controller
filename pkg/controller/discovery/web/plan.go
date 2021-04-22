@@ -1371,7 +1371,6 @@ func (t *PlanTree) addPVForPVC(cluster model.Cluster, pvc *model.PVC, parent *Tr
 	if pvcObject.Spec.VolumeName == "" {
 		return nil
 	}
-
 	collection := model.PV{
 		Base: model.Base{
 			Cluster: cluster.PK,
