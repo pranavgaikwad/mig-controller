@@ -1,5 +1,7 @@
 # mig-controller
 
+Test
+
 ## Installing
 mig-controller is installed by [mig-operator](https://github.com/konveyor/mig-operator).
 
