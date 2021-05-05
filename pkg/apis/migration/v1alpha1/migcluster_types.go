@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -99,10 +100,35 @@ type MigClusterStatus struct {
 	OperatorVersion string `json:"operatorVersion,omitempty"`
 }
 
-var clientMap map[types.UID]compat.Client
+var clientMap compatClientCache
+
+type compatClientCache struct {
+	cMap  map[types.UID]compat.Client
+	mutex sync.RWMutex
+}
+
+func (cm *compatClientCache) init() {
+	if cm.cMap == nil {
+		cm.cMap = make(map[types.UID]compat.Client)
+	}
+}
+
+func (cm *compatClientCache) Get(key types.UID) (compat.Client, bool) {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	val, found := cm.cMap[key]
+	return val, found
+}
+
+func (cm *compatClientCache) Set(key types.UID, val compat.Client) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.cMap[key] = val
+}
 
 func init() {
-	clientMap = make(map[types.UID]compat.Client)
+	clientMap = compatClientCache{}
+	clientMap.init()
 }
 
 // +genclient
@@ -170,7 +196,7 @@ func (m *MigCluster) GetServiceAccountSecret(client k8sclient.Client) (*kapi.Sec
 // GetClient get a local or remote client using a MigCluster and an existing client
 // GetClient get a local or remote client using a MigCluster and an existing client
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
-	client, ok := clientMap[m.UID]
+	client, ok := clientMap.Get(m.UID)
 	if ok {
 		return client, nil
 	}
@@ -215,7 +241,7 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		return nil, err
 	}
 	if rwStarted {
-		clientMap[m.UID] = compatClient
+		clientMap.Set(m.UID, compatClient)
 	}
 	return compatClient, nil
 }
