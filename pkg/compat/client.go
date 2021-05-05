@@ -47,6 +47,9 @@ type client struct {
 	Minor int
 }
 
+// cache spin lock default timeout
+const CacheSpinLockTimeout = 3 * time.Second
+
 //
 // Create a new client.
 func NewClient(restCfg *rest.Config, rClient *k8sclient.Client) (Client, error) {
@@ -228,7 +231,15 @@ func (c client) Create(ctx context.Context, in runtime.Object) error {
 	err = c.Client.Create(ctx, obj)
 	// If no error, verify thing we created exist in cache
 	if err == nil {
-		for true {
+		placeholder := obj.DeepCopyObject()
+	waitLoop:
+		for timeOut := time.After(CacheSpinLockTimeout); ; {
+			select {
+			case <-timeOut:
+				golog.Print("[CREATE] Timed out waiting for cache to fill up...")
+				break waitLoop
+			default:
+			}
 			kind := obj.GetObjectKind()
 			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
 			if err != nil {
@@ -248,7 +259,6 @@ func (c client) Create(ctx context.Context, in runtime.Object) error {
 			// break
 			// NEXT, let's try to get the object.
 			key := types.NamespacedName{Name: uName, Namespace: uNs}
-			placeholder := obj.DeepCopyObject()
 			err = c.Get(context.TODO(), key, placeholder)
 			if err != nil {
 				if k8serror.IsNotFound(err) {
@@ -337,7 +347,15 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 	golog.Printf("\n\n\n\n [kind=%v] [!] [UPDATE]\n\n\n\n\n ", in.GetObjectKind())
 	// If no error, verify thing we created exist in cache
 	if err == nil {
-		for true {
+		placeholder := obj.DeepCopyObject()
+	waitLoop:
+		for timeOut := time.After(CacheSpinLockTimeout); ; {
+			select {
+			case <-timeOut:
+				golog.Print("[UPDATE] Timed out waiting for cache to fill up...")
+				break waitLoop
+			default:
+			}
 			kind := obj.GetObjectKind()
 			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 			if err != nil {
@@ -362,7 +380,6 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 			// break
 			// NEXT, let's try to get the object.
 			key := types.NamespacedName{Name: uName, Namespace: uNs}
-			placeholder := obj.DeepCopyObject()
 			err = c.Get(context.TODO(), key, placeholder)
 			if err != nil {
 				if k8serror.IsNotFound(err) {
