@@ -211,19 +211,12 @@ func (r *ReconcileMigCluster) Reconcile(request reconcile.Request) (reconcile.Re
 
 // Setup remote watch.
 func (r *ReconcileMigCluster) setupRemoteWatch(cluster *migapi.MigCluster) error {
+	var err error
 	nsName := types.NamespacedName{
 		Namespace: cluster.Namespace,
 		Name:      cluster.Name,
 	}
-	remoteWatchMap := remote.GetWatchMap()
-	remoteWatchCluster := remoteWatchMap.Get(nsName)
-	if remoteWatchCluster != nil {
-		return nil
-	}
 
-	log.Info("Starting remote watch.", "cluster", cluster.Name)
-
-	var err error
 	var restCfg *rest.Config
 	if cluster.Spec.IsHostCluster {
 		restCfg, err = config.GetConfig()
@@ -236,6 +229,14 @@ func (r *ReconcileMigCluster) setupRemoteWatch(cluster *migapi.MigCluster) error
 			return liberr.Wrap(err)
 		}
 	}
+
+	if IsRemoteWatchConsistent(nsName, restCfg) {
+		return nil
+	}
+
+	r.shutdownRemoteWatch(cluster)
+
+	log.Info("Starting remote watch.", "cluster", cluster.Name)
 	StartRemoteWatch(r, remote.ManagerConfig{
 		RemoteRestConfig: restCfg,
 		ParentNsName:     nsName,
@@ -243,7 +244,6 @@ func (r *ReconcileMigCluster) setupRemoteWatch(cluster *migapi.MigCluster) error
 		ParentObject:     cluster,
 		Scheme:           r.scheme,
 	})
-
 	log.Info("Remote watch started.", "cluster", cluster.Name)
 
 	return nil

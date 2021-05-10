@@ -14,6 +14,7 @@ limitations under the License.
 package migcluster
 
 import (
+	"bytes"
 	"strconv"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -22,6 +23,7 @@ import (
 	kapi "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -89,6 +91,31 @@ func StartRemoteWatch(r *ReconcileMigCluster, config remote.ManagerConfig) error
 	remoteWatchMap.Set(config.ParentNsName, remoteWatchCluster)
 
 	return nil
+}
+
+// IsRemoteWatchConsistent checks whether remote watch in memory is consistent with given config
+func IsRemoteWatchConsistent(nsName types.NamespacedName, newConfig *rest.Config) bool {
+	inMemoryWatch := remote.GetWatchMap().Get(types.NamespacedName{
+		Name:      nsName.Name,
+		Namespace: nsName.Namespace,
+	})
+	if inMemoryWatch == nil {
+		return false
+	}
+	inMemoryConfig := inMemoryWatch.RemoteManager.GetConfig()
+	if inMemoryConfig.Host != newConfig.Host {
+		return false
+	}
+	if inMemoryConfig.Insecure != newConfig.Insecure {
+		return false
+	}
+	if inMemoryConfig.BearerToken != newConfig.BearerToken {
+		return false
+	}
+	if !bytes.Equal(inMemoryConfig.CAData, newConfig.CAData) {
+		return false
+	}
+	return true
 }
 
 // StopRemoteWatch will close a remote watch's stop channel
