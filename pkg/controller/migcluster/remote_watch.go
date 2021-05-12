@@ -14,7 +14,6 @@ limitations under the License.
 package migcluster
 
 import (
-	"bytes"
 	"strconv"
 
 	liberr "github.com/konveyor/controller/pkg/error"
@@ -93,8 +92,8 @@ func StartRemoteWatch(r *ReconcileMigCluster, config remote.ManagerConfig) error
 	return nil
 }
 
-// IsRemoteWatchConsistent checks whether remote watch in memory is consistent with given config
-func IsRemoteWatchConsistent(nsName types.NamespacedName, newConfig *rest.Config) bool {
+// IsRemoteWatchConsistent checks whether remote watch in-memory is consistent with given new config
+func IsRemoteWatchConsistent(nsName types.NamespacedName, config *rest.Config) bool {
 	inMemoryWatch := remote.GetWatchMap().Get(types.NamespacedName{
 		Name:      nsName.Name,
 		Namespace: nsName.Namespace,
@@ -103,19 +102,7 @@ func IsRemoteWatchConsistent(nsName types.NamespacedName, newConfig *rest.Config
 		return false
 	}
 	inMemoryConfig := inMemoryWatch.RemoteManager.GetConfig()
-	if inMemoryConfig.Host != newConfig.Host {
-		return false
-	}
-	if inMemoryConfig.Insecure != newConfig.Insecure {
-		return false
-	}
-	if inMemoryConfig.BearerToken != newConfig.BearerToken {
-		return false
-	}
-	if !bytes.Equal(inMemoryConfig.CAData, newConfig.CAData) {
-		return false
-	}
-	return true
+	return migapi.AreRestConfigsEqual(inMemoryConfig, config)
 }
 
 // StopRemoteWatch will close a remote watch's stop channel

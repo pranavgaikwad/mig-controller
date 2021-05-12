@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -100,37 +101,6 @@ type MigClusterStatus struct {
 	OperatorVersion string `json:"operatorVersion,omitempty"`
 }
 
-var clientMap compatClientCache
-
-type compatClientCache struct {
-	cMap  map[types.UID]compat.Client
-	mutex sync.RWMutex
-}
-
-func (cm *compatClientCache) init() {
-	if cm.cMap == nil {
-		cm.cMap = make(map[types.UID]compat.Client)
-	}
-}
-
-func (cm *compatClientCache) Get(key types.UID) (compat.Client, bool) {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-	val, found := cm.cMap[key]
-	return val, found
-}
-
-func (cm *compatClientCache) Set(key types.UID, val compat.Client) {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-	cm.cMap[key] = val
-}
-
-func init() {
-	clientMap = compatClientCache{}
-	clientMap.init()
-}
-
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -193,16 +163,51 @@ func (m *MigCluster) GetServiceAccountSecret(client k8sclient.Client) (*kapi.Sec
 // 	return client, nil
 // }
 
+var cachedClientMap compatClientCache
+var uncachedClientMap compatClientCache
+
+type compatClientCache struct {
+	cMap  map[types.UID]compat.Client
+	mutex sync.RWMutex
+}
+
+func (cm *compatClientCache) init() {
+	if cm.cMap == nil {
+		cm.cMap = make(map[types.UID]compat.Client)
+	}
+}
+
+func (cm *compatClientCache) Get(key types.UID) (compat.Client, bool) {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	val, found := cm.cMap[key]
+	return val, found
+}
+
+func (cm *compatClientCache) Set(key types.UID, val compat.Client) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.cMap[key] = val
+}
+
+func (cm *compatClientCache) Delete(key types.UID) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	delete(cm.cMap, key)
+}
+
+func init() {
+	cachedClientMap.init()
+	uncachedClientMap.init()
+}
+
 // GetClient get a local or remote client using a MigCluster and an existing client
 // GetClient get a local or remote client using a MigCluster and an existing client
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
-	client, ok := clientMap.Get(m.UID)
-	if ok {
-		return client, nil
-	}
-
 	// Building a compat client requires both restConfig and a k8s client
 	var rClient *k8sclient.Client
+	var cachedClientConfig *rest.Config
+	rwStarted := false
 
 	// Retrieve cached client if it exists
 	if m.Spec.IsHostCluster {
@@ -211,8 +216,10 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		rwm := remote.GetWatchMap()
 		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
 		if remoteCluster != nil {
+			cachedClientConfig = remoteCluster.RemoteManager.GetConfig()
 			cachedClient := remoteCluster.RemoteManager.GetClient()
 			rClient = &cachedClient
+			rwStarted = true
 		}
 	}
 
@@ -221,10 +228,30 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		return nil, err
 	}
 
-	rwStarted := false
+	// try to retrieve a client from the maps before creating a new one
+	if client, ok := cachedClientMap.Get(m.UID); ok {
+		if m.Spec.IsHostCluster || AreRestConfigsEqual(client.RestConfig(), restConfig) {
+			return client, nil
+		} else {
+			cachedClientMap.Delete(m.UID)
+		}
+	}
+	if client, ok := uncachedClientMap.Get(m.UID); ok && !rwStarted {
+		if AreRestConfigsEqual(client.RestConfig(), restConfig) {
+			return client, nil
+		} else {
+			uncachedClientMap.Delete(m.UID)
+		}
+	}
+
+	// if cached client is not consistent, use a uncached client until a new remote watch is started
+	if rwStarted && !AreRestConfigsEqual(restConfig, cachedClientConfig) {
+		rClient = nil
+		rwStarted = false
+	}
+
 	// Build client without cache if remote watch hasn't been started yet
 	if rClient == nil {
-		rwStarted = true
 		uncachedClient, err := k8sclient.New(
 			restConfig,
 			k8sclient.Options{
@@ -240,8 +267,10 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rwStarted {
-		clientMap.Set(m.UID, compatClient)
+	if rwStarted || m.Spec.IsHostCluster {
+		cachedClientMap.Set(m.UID, compatClient)
+	} else {
+		uncachedClientMap.Set(m.UID, compatClient)
 	}
 	return compatClient, nil
 }
@@ -834,4 +863,24 @@ func (r *MigCluster) GetObjectReference() *kapi.ObjectReference {
 		Name:      r.Name,
 		Namespace: r.Namespace,
 	}
+}
+
+// AreRestConfigsEqual given a new rest config, checks whether cluster's config is equal to it
+func AreRestConfigsEqual(c1, c2 *rest.Config) bool {
+	if c1 == nil || c2 == nil {
+		return false
+	}
+	if c1.Host != c2.Host {
+		return false
+	}
+	if c1.BearerToken != c2.BearerToken {
+		return false
+	}
+	if c1.TLSClientConfig.Insecure != c2.TLSClientConfig.Insecure {
+		return false
+	}
+	if !bytes.Equal(c1.TLSClientConfig.CAData, c2.TLSClientConfig.CAData) {
+		return false
+	}
+	return true
 }
