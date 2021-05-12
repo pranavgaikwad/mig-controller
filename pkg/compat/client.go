@@ -217,6 +217,21 @@ func (c client) List(ctx context.Context, opt *k8sclient.ListOptions, in runtime
 	return c.upConvert(ctx, obj, in)
 }
 
+func withSpinLockTimeout(function func(runtime.Object, runtime.Object) (bool, error), argument runtime.Object) error {
+	placeholder := argument.DeepCopyObject()
+	deadline := time.Now().Add(CacheSpinLockTimeout)
+	for time.Now().Before(deadline) {
+		shouldBreak, err := function(argument, placeholder)
+		if err != nil {
+			return err
+		}
+		if shouldBreak {
+			break
+		}
+	}
+	return nil
+}
+
 // Create the specified resource.
 // The resource will be converted to a compatible version as needed.
 func (c client) Create(ctx context.Context, in runtime.Object) error {
@@ -231,46 +246,30 @@ func (c client) Create(ctx context.Context, in runtime.Object) error {
 	err = c.Client.Create(ctx, obj)
 	// If no error, verify thing we created exist in cache
 	if err == nil {
-		placeholder := obj.DeepCopyObject()
-	waitLoop:
-		for timeOut := time.After(CacheSpinLockTimeout); ; {
-			select {
-			case <-timeOut:
-				golog.Print("[CREATE] Timed out waiting for cache to fill up...")
-				break waitLoop
-			default:
-			}
+		doesCreatedThingExistInCache := func(object runtime.Object, placeholder runtime.Object) (shouldBreak bool, err error) {
 			kind := obj.GetObjectKind()
-			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
+			key, err := getNsName(obj)
 			if err != nil {
-				golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+				return true, nil
 			}
-			uNs, found, err := unstructured.NestedString(u, "metadata", "namespace")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.namespace not found", kind)
-				break
-			}
-			uName, found, err := unstructured.NestedString(u, "metadata", "name")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.name not found", kind)
-				break
-			}
-			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[CREATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, uNs, uName))
+			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[CREATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, key.Namespace, key.Name))
 			// break
 			// NEXT, let's try to get the object.
-			key := types.NamespacedName{Name: uName, Namespace: uNs}
 			err = c.Get(context.TODO(), key, placeholder)
 			if err != nil {
 				if k8serror.IsNotFound(err) {
 					golog.Print(fmt.Sprintf("[!!!] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
-					continue
+					return false, nil
 				} else {
 					golog.Print(fmt.Sprintf("[<<<] Error checking on cache: [kind=%v] [key=%v]", kind, key))
-					return err
+					return false, err
 				}
 			}
-			golog.Printf("[DONE] CACHE CAUGHT UP after time=%v!\n\n\n", time.Since(start))
-			break
+			return true, nil
+		}
+		err := withSpinLockTimeout(doesCreatedThingExistInCache, obj)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -299,17 +298,18 @@ func (c client) Delete(ctx context.Context, in runtime.Object, opt ...k8sclient.
 func getNsName(in runtime.Object) (types.NamespacedName, error) {
 	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
 	if err != nil {
-		golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+		golog.Printf("unstructured client did not understand object with err: %T\n", err)
+		return types.NamespacedName{}, err
 	}
 	ns, found, err := unstructured.NestedString(u, "metadata", "namespace")
 	if err != nil || !found {
-		golog.Printf("meta.namespace not found")
-		return types.NamespacedName{}, nil
+		golog.Println("meta.namespace not found")
+		return types.NamespacedName{}, fmt.Errorf("meta.namespace not found")
 	}
 	name, found, err := unstructured.NestedString(u, "metadata", "name")
 	if err != nil || !found {
-		golog.Printf("meta.name not found")
-		return types.NamespacedName{}, nil
+		golog.Println("meta.name not found")
+		return types.NamespacedName{}, fmt.Errorf("meta.name not found")
 	}
 	return types.NamespacedName{Namespace: ns, Name: name}, nil
 }
@@ -317,17 +317,17 @@ func getNsName(in runtime.Object) (types.NamespacedName, error) {
 func getResourceVersion(in runtime.Object) (int, error) {
 	u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(in)
 	if err != nil {
-		golog.Print(fmt.Sprintf("unstructured client did not understand object with err: %T", err))
+		golog.Printf("unstructured client did not understand object with err: %T\n", err)
 		return 0, err
 	}
 	resourceVersion, found, err := unstructured.NestedString(u, "metadata", "resourceVersion")
 	if err != nil || !found {
-		golog.Printf("meta.generation not found")
+		golog.Println("meta.generation not found")
 		return 0, err
 	}
 	resourceVersionInt, err := strconv.Atoi(resourceVersion)
 	if err != nil {
-		golog.Print("failed to convert resourceVersion to int")
+		golog.Println("failed to convert resourceVersion to int")
 		return 0, err
 	}
 	return resourceVersionInt, nil
@@ -347,75 +347,42 @@ func (c client) Update(ctx context.Context, in runtime.Object) error {
 	golog.Printf("\n\n\n\n [kind=%v] [!] [UPDATE]\n\n\n\n\n ", in.GetObjectKind())
 	// If no error, verify thing we created exist in cache
 	if err == nil {
-		placeholder := obj.DeepCopyObject()
-	waitLoop:
-		for timeOut := time.After(CacheSpinLockTimeout); ; {
-			select {
-			case <-timeOut:
-				golog.Print("[UPDATE] Timed out waiting for cache to fill up...")
-				break waitLoop
-			default:
-			}
+		doesUpdatedThingExistInCache := func(obj, placeholder runtime.Object) (shouldBreak bool, err error) {
 			kind := obj.GetObjectKind()
-			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+			key, err := getNsName(obj)
 			if err != nil {
-				golog.Print(fmt.Sprintf("[UPDATE] unstructured client did not understand object with err: %T", err))
+				return true, nil
 			}
-			uNs, found, err := unstructured.NestedString(u, "metadata", "namespace")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.namespace not found", kind)
-				break
+			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[UPDATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, key.Namespace, key.Name))
+			uRV, err := getResourceVersion(obj)
+			if err != nil {
+				return true, nil
 			}
-			uName, found, err := unstructured.NestedString(u, "metadata", "name")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.name not found", kind)
-				break
-			}
-			uRV, found, err := unstructured.NestedString(u, "metadata", "resourceVersion")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.resourceVersion not found", kind)
-				break
-			}
-			golog.Print(fmt.Sprintf("\n\n\n\n\n\n<<<[UPDATE OBJ]>>> kind=[%v] key=[%v/%v]\n\n\n\n\n\n", kind, uNs, uName))
-			// break
-			// NEXT, let's try to get the object.
-			key := types.NamespacedName{Name: uName, Namespace: uNs}
 			err = c.Get(context.TODO(), key, placeholder)
 			if err != nil {
 				if k8serror.IsNotFound(err) {
 					golog.Print(fmt.Sprintf("[!!!] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
-					continue
+					return false, nil
 				} else {
 					golog.Print(fmt.Sprintf("[<<<] Error checking on cache: [kind=%v] [key=%v]", kind, key))
-					return err
+					return false, err
 				}
 			}
-			uOut, err := runtime.DefaultUnstructuredConverter.ToUnstructured(placeholder)
+			newRV, err := getResourceVersion(placeholder)
 			if err != nil {
-				golog.Print(fmt.Sprintf("[UPDATE2] unstructured client did not understand object with err: %T", err))
-				break
+				return true, nil
 			}
-			newRV, found, err := unstructured.NestedString(uOut, "metadata", "resourceVersion")
-			if err != nil || !found {
-				golog.Printf("[kind=%v] meta.generation not found on uOut", kind)
-				break
-			}
-			uRVint, err := strconv.Atoi(uRV)
-			if err != nil {
-				golog.Print(fmt.Sprintf("[UPDATE2] failed to convert uRV to int: %T", err))
-			}
-			newRVint, err := strconv.Atoi(newRV)
-			if err != nil {
-				golog.Print(fmt.Sprintf("[UPDATE2] failed to convert uRV to int: %T", err))
-			}
-
-			if newRVint >= uRVint {
+			if newRV >= uRV {
 				golog.Printf("[DONE] CACHE CAUGHT UP after time=%v!\n\n\n", time.Since(start))
-				break
+				return true, nil
 			} else {
 				golog.Print(fmt.Sprintf("[!!!] [UPDATE] Cache is still catching up: [kind=%v] [key=%v] [method=%v]", kind, key, "CREATE"))
-				continue
+				return false, nil
 			}
+		}
+		err := withSpinLockTimeout(doesUpdatedThingExistInCache, obj)
+		if err != nil {
+			return err
 		}
 	}
 
