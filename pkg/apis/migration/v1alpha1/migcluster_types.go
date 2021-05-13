@@ -207,36 +207,40 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	// Building a compat client requires both restConfig and a k8s client
 	var rClient *k8sclient.Client
 	var cachedClientConfig *rest.Config
-	rwStarted := false
-
-	// Retrieve cached client if it exists
-	if m.Spec.IsHostCluster {
-		rClient = &c
-	} else {
-		rwm := remote.GetWatchMap()
-		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
-		if remoteCluster != nil {
-			cachedClientConfig = remoteCluster.RemoteManager.GetConfig()
-			cachedClient := remoteCluster.RemoteManager.GetClient()
-			rClient = &cachedClient
-			rwStarted = true
-		}
-	}
+	usingCachedClient := false
 
 	restConfig, err := m.BuildRestConfig(c)
 	if err != nil {
 		return nil, err
 	}
 
+	// Retrieve cached client if it exists
+	if m.Spec.IsHostCluster {
+		rClient = &c
+		usingCachedClient = true
+	} else {
+		rwm := remote.GetWatchMap()
+		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
+		if remoteCluster != nil {
+			cachedClientConfig = remoteCluster.RemoteManager.GetConfig()
+			cachedClient := remoteCluster.RemoteManager.GetClient()
+			if AreRestConfigsEqual(cachedClientConfig, restConfig) {
+				rClient = &cachedClient
+				usingCachedClient = true
+			}
+		}
+	}
+
 	// try to retrieve a client from the maps before creating a new one
 	if client, ok := cachedClientMap.Get(m.UID); ok {
-		if m.Spec.IsHostCluster || AreRestConfigsEqual(client.RestConfig(), restConfig) {
+		if AreRestConfigsEqual(client.RestConfig(), restConfig) {
 			return client, nil
 		} else {
 			cachedClientMap.Delete(m.UID)
+			usingCachedClient = false
 		}
 	}
-	if client, ok := uncachedClientMap.Get(m.UID); ok && !rwStarted {
+	if client, ok := uncachedClientMap.Get(m.UID); ok && !usingCachedClient {
 		if AreRestConfigsEqual(client.RestConfig(), restConfig) {
 			return client, nil
 		} else {
@@ -244,14 +248,8 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		}
 	}
 
-	// if cached client is not consistent, use a uncached client until a new remote watch is started
-	if rwStarted && !AreRestConfigsEqual(restConfig, cachedClientConfig) {
-		rClient = nil
-		rwStarted = false
-	}
-
 	// Build client without cache if remote watch hasn't been started yet
-	if rClient == nil {
+	if rClient == nil || !usingCachedClient {
 		uncachedClient, err := k8sclient.New(
 			restConfig,
 			k8sclient.Options{
@@ -267,7 +265,7 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rwStarted || m.Spec.IsHostCluster {
+	if usingCachedClient {
 		cachedClientMap.Set(m.UID, compatClient)
 	} else {
 		uncachedClientMap.Set(m.UID, compatClient)
