@@ -202,78 +202,86 @@ func init() {
 	uncachedClientMap.init()
 }
 
-// GetClient gets a host or remote compat.Client using a MigCluster and the host k8s client
+// GetClient gets a host or remote compat.Client for interacting with a MigCluster.
+// For best performance, returns the first available from this list:
+// 1) compat.Client with cache from map
+// 2) compat.Client with cache by building from manager k8s client
+// 3) compat.Client without cache from map
+// 4) compat.Client without cache by building from restConfig
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	var cachedClusterClient *k8sclient.Client
-	var uncachedClusterClient *k8sclient.Client
-	// True when cached client is available and matches current MigCluster restConfig
-	cachedClientUsable := false
 
-	// Building a compat client requires both restConfig and a k8s client
+	// RestConfig is used to build client from scratch, and to invalidate stored clients
+	// when credentials and coordinates of MigClusters change.
 	clusterRestConfig, err := m.BuildRestConfig(c)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get a cached kube client if one exists
+	// Get manager cached k8s client if one exists
 	if m.Spec.IsHostCluster {
 		// Host cluster always has a cached k8s client
-		clusterClient = &c
-		cachedClientUsable = true
+		cachedClusterClient = &c
 	} else {
-		// Remote cluster has a cached k8s client if remote manager exists
+		// Remote cluster has a cached k8s client if remote manager has been started
 		rwm := remote.GetWatchMap()
 		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
 		if remoteCluster != nil {
 			cachedClientConfig := remoteCluster.RemoteManager.GetConfig()
 			cachedClient := remoteCluster.RemoteManager.GetClient()
 			if AreRestConfigsEqual(cachedClientConfig, clusterRestConfig) {
-				clusterClient = &cachedClient
-				cachedClientUsable = true
+				cachedClusterClient = &cachedClient
 			}
 		}
 	}
 
-	// Retrieve a pre-created compat.Client from in-memory if available
-	if client, ok := cachedClientMap.Get(m.UID); ok {
-		if AreRestConfigsEqual(client.RestConfig(), clusterRestConfig) {
-			return client, nil
+	// 1) compat.Client with cache from map
+	if compatClient, ok := cachedClientMap.Get(m.UID); ok {
+		if AreRestConfigsEqual(compatClient.RestConfig(), clusterRestConfig) {
+			return compatClient, nil
 		} else {
+			// Handle change of restConfig for MigCluster
 			cachedClientMap.Delete(m.UID)
-			cachedClientUsable = false
 		}
 	}
-	if client, ok := uncachedClientMap.Get(m.UID); ok && !cachedClientUsable {
-		if AreRestConfigsEqual(client.RestConfig(), clusterRestConfig) {
-			return client, nil
+
+	// 2) compat.Client with cache by building from manager k8s client
+	if cachedClusterClient != nil {
+		compatClient, err := compat.NewClient(clusterRestConfig, cachedClusterClient)
+		if err != nil {
+			return nil, err
+		}
+		cachedClientMap.Set(m.UID, compatClient)
+		return compatClient, nil
+	}
+
+	// 3) compat.Client without cache from map
+	if compatClient, ok := uncachedClientMap.Get(m.UID); ok {
+		if AreRestConfigsEqual(compatClient.RestConfig(), clusterRestConfig) {
+			return compatClient, nil
 		} else {
+			// Handle change of restConfig for MigCluster
 			uncachedClientMap.Delete(m.UID)
 		}
 	}
 
-	// Build client without cache if remote watch hasn't been started yet
-	if clusterClient == nil || !cachedClientUsable {
-		uncachedClient, err := k8sclient.New(
-			clusterRestConfig,
-			k8sclient.Options{
-				Scheme: scheme.Scheme,
-			})
-		if err != nil {
-			return nil, err
-		}
-		clusterClient = &uncachedClient
-	}
-
-	compatClusterClient, err := compat.NewClient(clusterRestConfig, clusterClient)
+	// 4) compat.Client without cache by building from restConfig
+	uncachedClusterClient, err := k8sclient.New(
+		clusterRestConfig,
+		k8sclient.Options{
+			Scheme: scheme.Scheme,
+		})
 	if err != nil {
 		return nil, err
 	}
-	if cachedClientUsable {
-		cachedClientMap.Set(m.UID, compatClusterClient)
-	} else {
-		uncachedClientMap.Set(m.UID, compatClusterClient)
+
+	compatClient, err := compat.NewClient(clusterRestConfig, &uncachedClusterClient)
+	if err != nil {
+		return nil, err
 	}
-	return compatClusterClient, nil
+
+	uncachedClientMap.Set(m.UID, compatClient)
+	return compatClient, nil
 }
 
 func (m *MigCluster) GetClusterConfigMap(c k8sclient.Client) (*corev1.ConfigMap, error) {
