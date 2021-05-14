@@ -204,9 +204,10 @@ func init() {
 
 // GetClient gets a host or remote compat.Client using a MigCluster and the host k8s client
 func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
-	var clusterClient *k8sclient.Client
-	var cachedClientConfig *rest.Config
-	cachedClientAvailable := false
+	var cachedClusterClient *k8sclient.Client
+	var uncachedClusterClient *k8sclient.Client
+	// True when cached client is available and matches current MigCluster restConfig
+	cachedClientUsable := false
 
 	// Building a compat client requires both restConfig and a k8s client
 	clusterRestConfig, err := m.BuildRestConfig(c)
@@ -214,35 +215,35 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 		return nil, err
 	}
 
-	// Retrieve cached client if it exists
+	// Get a cached kube client if one exists
 	if m.Spec.IsHostCluster {
-		// Host cluster always has a cached client
+		// Host cluster always has a cached k8s client
 		clusterClient = &c
-		cachedClientAvailable = true
+		cachedClientUsable = true
 	} else {
-		// Remote cluster has a cached client if we've started a remote manager already
+		// Remote cluster has a cached k8s client if remote manager exists
 		rwm := remote.GetWatchMap()
 		remoteCluster := rwm.Get(types.NamespacedName{Namespace: m.Namespace, Name: m.Name})
 		if remoteCluster != nil {
-			cachedClientConfig = remoteCluster.RemoteManager.GetConfig()
+			cachedClientConfig := remoteCluster.RemoteManager.GetConfig()
 			cachedClient := remoteCluster.RemoteManager.GetClient()
 			if AreRestConfigsEqual(cachedClientConfig, clusterRestConfig) {
 				clusterClient = &cachedClient
-				cachedClientAvailable = true
+				cachedClientUsable = true
 			}
 		}
 	}
 
-	// try to retrieve a client from the maps before creating a new one
+	// Retrieve a pre-created compat.Client from in-memory if available
 	if client, ok := cachedClientMap.Get(m.UID); ok {
 		if AreRestConfigsEqual(client.RestConfig(), clusterRestConfig) {
 			return client, nil
 		} else {
 			cachedClientMap.Delete(m.UID)
-			cachedClientAvailable = false
+			cachedClientUsable = false
 		}
 	}
-	if client, ok := uncachedClientMap.Get(m.UID); ok && !cachedClientAvailable {
+	if client, ok := uncachedClientMap.Get(m.UID); ok && !cachedClientUsable {
 		if AreRestConfigsEqual(client.RestConfig(), clusterRestConfig) {
 			return client, nil
 		} else {
@@ -251,7 +252,7 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	}
 
 	// Build client without cache if remote watch hasn't been started yet
-	if clusterClient == nil || !cachedClientAvailable {
+	if clusterClient == nil || !cachedClientUsable {
 		uncachedClient, err := k8sclient.New(
 			clusterRestConfig,
 			k8sclient.Options{
@@ -267,7 +268,7 @@ func (m *MigCluster) GetClient(c k8sclient.Client) (compat.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cachedClientAvailable {
+	if cachedClientUsable {
 		cachedClientMap.Set(m.UID, compatClusterClient)
 	} else {
 		uncachedClientMap.Set(m.UID, compatClusterClient)
